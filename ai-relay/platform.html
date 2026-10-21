@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 双 AI 流水线 · 多 Agent 工作台</title>
+<style>
+:root{
+  --bg:#f3f5f7; --card:#fff; --border:#dfe3e8; --text:#20252b; --muted:#707985;
+  --accent:#245f91; --soft:#eaf2f8; --pass:#13866b; --fail:#c2413b;
+  --warn:#d97706; --wait:#7c3aed; --ok:#0f9960;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;font-size:14px}
+.wrap{max-width:1480px;margin:0 auto;padding:18px 24px}
+
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+h1{font-size:19px;font-weight:650;line-height:1.25}
+.sub{font-size:12px;color:var(--muted)}
+.lamps{display:flex;gap:10px;flex-wrap:wrap}
+.lamp{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);
+  padding:4px 9px;border-radius:6px;font-size:11px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--pass)}
+.dot.off{background:#c9ced6}.dot.warn{background:var(--warn)}
+
+.section-nav{position:sticky;top:0;z-index:10;display:flex;gap:18px;align-items:center;
+  overflow-x:auto;margin:0 -2px 16px;padding:7px 2px 9px;background:var(--bg);
+  border-bottom:1px solid var(--border);scrollbar-width:thin}
+.section-nav a{flex:none;padding:3px 0;color:#5f6975;text-decoration:none;font-size:12px;font-weight:500;
+  border-bottom:2px solid transparent}
+.section-nav a:hover,.section-nav a:focus-visible,.section-nav a[aria-current="location"]{color:var(--accent);
+  border-bottom-color:var(--accent);outline:none}
+.section-nav a:focus-visible{box-shadow:0 2px 0 var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:0;margin-bottom:16px;
+  overflow:hidden;background:var(--card);border:1px solid var(--border);border-radius:7px}
+.stat{min-width:0;padding:10px 13px;border-right:1px solid var(--border)}
+.stat:last-child{border-right:0}
+.stat .n{font-size:20px;font-weight:650;line-height:1.25;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11px;color:var(--muted);white-space:nowrap}
+.stat:nth-child(2) .n{color:#245f91}
+.stat:nth-child(3) .n{color:#a56b08}
+.stat:nth-child(4) .n{color:var(--pass)}
+.stat:nth-child(5) .n{color:var(--fail)}
+
+.agent-monitor{margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:7px;overflow:hidden}
+.agent-monitor-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;
+  border-bottom:1px solid var(--border);background:#fafbfc}
+.agent-monitor-head h2{font-size:13px;font-weight:650}
+.agent-monitor-head span{font-size:11px;color:var(--muted)}
+.agent-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.agent-state{min-width:0;padding:11px 13px;border-right:1px solid var(--border)}
+.agent-state:last-child{border-right:0}
+.agent-state-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.agent-state-top strong{font-size:12px;font-weight:650;min-width:0}
+.agent-pill{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)}
+.agent-pill::before{content:"";width:7px;height:7px;border-radius:50%;background:#aab2bb}
+.agent-state[data-state="running"] .agent-pill{color:#087956}
+.agent-state[data-state="running"] .agent-pill::before{background:#13866b;box-shadow:0 0 0 3px #dff3ec}
+.agent-state[data-state="waiting"] .agent-pill,.agent-state[data-state="waiting_codex"] .agent-pill{color:#a56b08}
+.agent-state[data-state="waiting"] .agent-pill::before,.agent-state[data-state="waiting_codex"] .agent-pill::before{background:#d97706}
+.agent-state[data-state="success"] .agent-pill{color:#087956}
+.agent-state[data-state="success"] .agent-pill::before{background:#13866b}
+.agent-state[data-state="error"] .agent-pill,.agent-state[data-state="interrupted"] .agent-pill{color:#b42318}
+.agent-state[data-state="error"] .agent-pill::before,.agent-state[data-state="interrupted"] .agent-pill::before{background:#c2413b}
+.agent-backend{font-size:11px;color:var(--text);overflow-wrap:anywhere}
+.agent-detail{min-height:34px;margin-top:4px;color:var(--muted);font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+.agent-meta{margin-top:5px;color:var(--muted);font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+
+input,select,button,textarea{font-family:inherit;font-size:13px;padding:8px 10px;border-radius:6px;
+  border:1px solid var(--border);background:#fff;color:var(--text)}
+input[type=text]{flex:1;min-width:240px}
+button{background:var(--accent);color:#fff;border:1px solid var(--accent);cursor:pointer;font-weight:550;
+  transition:background .12s,border-color .12s,box-shadow .12s}
+button:hover{background:#1b4f7a;border-color:#1b4f7a}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #73a8cc;outline-offset:2px}
+button.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}
+button.ghost:hover{background:#f1f4f7;border-color:#c3cbd4}
+button.danger{background:#fff;color:var(--fail);border:1px solid #f3c7c3}
+button:disabled{opacity:.45;cursor:not-allowed}
+label.chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+label.chk input{width:auto}
+
+.main{display:grid;grid-template-columns:minmax(300px,340px) minmax(0,1fr);gap:14px;align-items:start;
+  scroll-margin-top:58px}
+@media(max-width:1000px){.main{grid-template-columns:1fr}}
+
+.panel{background:var(--card);border:1px solid var(--border);border-radius:7px;overflow:hidden}
+.panel h2{font-size:13px;font-weight:650;padding:10px 14px;border-bottom:1px solid var(--border);background:#fafbfc}
+#list{max-height:70vh;overflow:auto}
+
+.task{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+.task:last-child{border-bottom:none}
+.task:hover{background:#fafbfc}
+.task.on{background:var(--soft)}
+.task .top{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}
+.tid{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted)}
+.badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:500;white-space:nowrap}
+.b-NEW{background:#eef2f7;color:#4a5568}
+.b-PROMPT_READY{background:#e0f2fe;color:#0369a1}
+.b-DONE{background:#fef3c7;color:#92400e}
+.b-PASS{background:#d1fae5;color:var(--pass)}
+.b-FAIL{background:#fee2e2;color:var(--fail)}
+.b-GIVE_UP,.b-BLOCKED{background:#f1f2f4;color:#6b7280}
+.b-WAITING_OPTIMIZE{background:#fae8ff;color:#a21caf}
+.b-WAITING_EXECUTE{background:#ede9fe;color:var(--wait)}
+.b-WAITING_REVIEW{background:#cffafe;color:#0e7490}
+.b-WAITING_CODEX{background:#ffe4e6;color:#be123c}
+.b-AWAIT_MODEL_CONFIRM{background:#fff7ed;color:#c2410c}
+.b-ASSESSED{background:#ecfeff;color:#0e7490}
+.req{font-size:13px;flex:1;min-width:150px}
+.task .meta{font-size:11px;color:var(--muted)}
+
+/* 难度路由确认面板 */
+.mgate{margin:12px 0;padding:12px 14px;border:1px dashed #f59e0b;border-radius:6px;
+  background:#fffbeb;font-size:13px}
+.mgate .mh{font-weight:600;color:#c2410c;margin-bottom:6px}
+.mgate .mr{color:#92400e;margin-bottom:9px}
+.mgate .mr .rsn{color:#a16207;margin-left:6px;font-weight:400}
+.mgate .mrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mgate select{padding:6px 8px;font-size:13px;border-radius:8px;border:1px solid #e3e6eb;background:#fff}
+.mgate .wtxt{color:#b45309}
+.mgate .cd{font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#b45309}
+.mgate .cd.urgent{color:#dc2626}
+.mgate button{background:#c2410c;padding:6px 16px}
+
+.empty{padding:36px;text-align:center;color:var(--muted);font-size:13px}
+
+.dh{padding:14px 18px;border-bottom:1px solid var(--border)}
+.dh .t{font-size:15px;font-weight:600;margin-bottom:6px}
+.dh .m{font-size:12px;color:var(--muted)}
+.acts{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}
+
+.tabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--border);
+  background:#fafbfc;overflow-x:auto}
+.tab{padding:9px 13px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;
+  color:var(--muted);white-space:nowrap}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+.body{padding:14px 16px;max-height:66vh;overflow:auto}
+.body pre{background:#f6f8fa;padding:11px;border-radius:7px;overflow-x:auto;
+  font-family:ui-monospace,Consolas,monospace;font-size:12px;margin:8px 0}
+.body code{background:#f0f2f5;padding:1px 5px;border-radius:4px;font-size:12px}
+.body h1,.body h2,.body h3{font-size:15px;margin:12px 0 6px;font-weight:600}
+.body h4{font-size:13px;margin:10px 0 5px;font-weight:600}
+.body p{margin:6px 0}
+.body li{margin:3px 0 3px 20px;list-style:disc}
+.body table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
+.body td{border:1px solid var(--border);padding:6px 9px}
+.body tr:first-child td{background:#f6f8fa;font-weight:600}
+.body .sp{height:7px}
+.hint{color:var(--muted);font-size:12px;padding:14px}
+
+.tl{list-style:none;margin:0}
+.tl li{position:relative;padding:0 0 14px 20px;border-left:2px solid var(--border);margin-left:5px}
+.tl li:last-child{border-left-color:transparent;padding-bottom:0}
+.tl li::before{content:"";position:absolute;left:-6px;top:5px;width:9px;height:9px;
+  border-radius:50%;background:var(--accent)}
+.tl .tt{font-size:11px;color:var(--muted)}
+.tl .tv{font-size:12px}
+
+.toast{position:fixed;bottom:22px;right:22px;background:#20252b;color:#fff;padding:10px 15px;
+  border-radius:6px;font-size:13px;opacity:0;transition:opacity .22s;pointer-events:none;z-index:99}
+.toast.show{opacity:1}
+.filelink{font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline}
+
+/* 实时控制台 */
+.console{background:#1f2329;color:#e6e8eb;border-radius:7px;overflow:hidden;margin-bottom:16px;
+  scroll-margin-top:60px;box-shadow:0 1px 2px rgba(21,34,47,.12)}
+.console .chead{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
+  background:#2a2f37;font-size:13px;font-weight:600}
+.console .ccontrols{display:flex;align-items:center;gap:14px}
+.console .log-toggle{display:flex;align-items:center;gap:6px;color:#cbd2da;font-size:11px;font-weight:400;cursor:pointer}
+.console .log-toggle input{width:13px;height:13px;margin:0;accent-color:#60a5fa}
+.console .cbody{height:290px;overflow-y:auto;padding:12px 14px;font-family:ui-monospace,Consolas,monospace;
+  font-size:12px;line-height:1.7}
+.console .cin{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #2a2f37;background:#262b32;align-items:flex-end}
+.console .cin textarea{flex:1;min-width:0;min-height:44px;max-height:min(220px,30vh);resize:vertical;
+  overflow-y:auto;overflow-wrap:anywhere;word-break:break-word;white-space:pre-wrap;
+  background:#1a1e23;border:1px solid #3a414a;color:#e6e8eb;
+  border-radius:6px;padding:9px 11px;font-family:inherit;font-size:13px;line-height:1.5}
+.console .cin button{background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:6px;
+  min-height:44px;padding:8px 14px;cursor:pointer;font-weight:500;align-self:flex-end}
+.cline{display:flex;align-items:flex-start;gap:8px;white-space:normal;word-break:break-word;margin:8px 0}
+.cline .tag{display:inline-block;padding:0 6px;border-radius:4px;font-size:10px;margin-right:6px;
+  font-weight:600;vertical-align:1px}
+.cline .msg{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;min-width:0}
+.cline.user{justify-content:flex-end}
+.cline.user .tag{order:2;background:#1e3a8a;color:#dbeafe;margin:6px 0 0}
+.cline.user .msg{max-width:86%;padding:8px 11px;border-radius:10px 10px 2px 10px;background:#1d4ed8;color:#eff6ff}
+.cline.assistant .tag{background:#14532d;color:#bbf7d0;margin:6px 0 0}
+.cline.assistant .msg{max-width:92%;padding:8px 11px;border:1px solid #3a414a;border-radius:2px 10px 10px 10px;background:#2a2f37;color:#e6e8eb}
+.cline.system{color:#9aa1aa;font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:11px}
+.cline.error{color:#fecaca}
+.cline.error .tag{background:#7f1d1d;color:#fecaca}
+.console:not(.show-tools) .cline[data-type="tool"],
+.console:not(.show-tools) .cline[data-type="result"]{display:none}
+.tag-sys{background:#3a414a;color:#cbd2da}
+.tag-assistant{background:#1e3a8a;color:#dbeafe}
+.tag-tool{background:#6d4a1e;color:#fde68a}
+.tag-result{background:#14532d;color:#bbf7d0}
+.tag-user{background:#1e3a8a;color:#dbeafe}
+.tag-error{background:#7f1d1d;color:#fecaca}
+.dotlive{width:8px;height:8px;border-radius:50%;background:#34d399;display:inline-block;margin-right:6px}
+.dotlive.off{background:#6b7280}
+
+/* 代理引导横幅 */
+.banner{display:none;align-items:center;gap:12px;background:#fff4f2;border:1px solid #f3c7c3;
+  border-radius:7px;padding:11px 14px;margin-bottom:14px}
+.banner.on{display:flex}
+.banner .bico{font-size:20px}
+.banner .btxt{flex:1;font-size:13px;color:#9a2c24}
+.banner .btxt b{color:#d93026}
+.banner button{background:#d93026;white-space:nowrap}
+.banner button.ghost{background:#fff;color:#d93026;border:1px solid #f3c7c3}
+@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(217,48,38,.0)}50%{box-shadow:0 0 0 5px rgba(217,48,38,.12)}}
+.banner.on{animation:pulseRed 2.4s ease-in-out infinite}
+
+/* 任务执行过程回放 */
+.proc{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.7}
+.proc .pt{color:var(--muted);font-size:10px;margin-right:6px}
+.emptyEv{color:var(--muted);font-size:12px;padding:8px 0}
+.summary-lead{padding:0 0 12px;color:var(--muted);font-size:12px}
+.summary-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:16px}
+.summary-metric{border-left:3px solid var(--accent);padding:5px 10px;background:#f7f9fc}
+.summary-metric b{display:block;font-size:15px;font-weight:600}
+.summary-metric span{font-size:11px;color:var(--muted)}
+.result-section{padding:10px 0;border-bottom:1px solid var(--border)}
+.result-section:last-child{border-bottom:0}
+.result-section h3{font-size:13px;margin-bottom:6px}
+.result-links{display:flex;gap:8px;flex-wrap:wrap}
+
+/* 多 Agent 分工面板 */
+.agents .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:7px}
+.agents label.ar{display:flex;align-items:center;gap:5px;font-size:12px}
+.agents .bk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.agents .bk b{font-size:12px;min-width:110px}
+.agents .hint2{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+
+/* 本地文件投递 */
+.drop{background:var(--card);border:1px solid var(--border);border-radius:7px;margin-bottom:12px;
+  scroll-margin-top:58px}
+.drop>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;
+  min-height:42px;padding:9px 13px;cursor:pointer;font-size:13px;font-weight:650}
+.drop>summary::-webkit-details-marker{display:none}
+.drop>summary::after{content:"+";color:var(--muted);font-size:17px;font-weight:400;line-height:1}
+.drop[open]>summary{border-bottom:1px solid var(--border)}
+.drop[open]>summary::after{content:"-"}
+.drop .section-meta{margin-left:auto;color:var(--muted);font-size:11px;font-weight:400}
+.drop .drop-body{padding:11px 13px 13px}
+.drop h2{font-size:13px;font-weight:600;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.drop .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.drop input[type=text]{flex:1;min-width:200px}
+.drop .fname{font-size:12px;color:var(--muted);margin-top:7px}
+.drop .hint2{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+.task-create{margin:0 0 16px;padding:0 0 15px;border-bottom:1px solid var(--border);scroll-margin-top:58px}
+.task-create h2{margin:0 0 8px;font-size:13px;font-weight:650}
+.task-create .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.task-create input[type=text]{min-width:260px;flex:1 1 300px}
+.task-create select{min-width:285px;flex:0 1 360px}
+.task-create .chk{white-space:nowrap}
+
+@media(max-width:1100px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .stat:nth-child(4){border-right:0}.stat:nth-child(n+5){border-top:1px solid var(--border)}
+  .agent-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.agent-state:nth-child(3){border-right:0}
+  .agent-state:nth-child(n+4){border-top:1px solid var(--border)}}
+@media(max-width:700px){.wrap{padding:14px 12px}.section-nav{gap:15px;margin-left:0;margin-right:0}
+  header{align-items:flex-start}.lamps{gap:5px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stat:nth-child(even){border-right:0}.stat:nth-child(n+3){border-top:1px solid var(--border)}
+  .agent-grid{grid-template-columns:1fr}.agent-state{border-right:0;border-top:1px solid var(--border)}
+  .agent-state:first-child{border-top:0}.agent-detail{min-height:0}
+  .task-create input[type=text],.task-create select{min-width:100%;flex-basis:100%}
+  .console .chead{flex-wrap:wrap;gap:7px}.console .ccontrols{width:100%;justify-content:space-between}
+  .console .cbody{height:260px}.console .cin{padding:9px}.console .cin textarea{max-height:30vh}
+  #list{max-height:none}.body{padding:12px;max-height:none}.panel{min-width:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>AI 双 AI 流水线</h1>
+    <div class="sub">多 Agent 分工 · TRAE / WorkBuddy 文件接力 · 独立验收 · 失败自动打回</div>
+  </div>
+  <div class="lamps" id="lamps"></div>
+</header>
+
+<nav class="section-nav" aria-label="工作区">
+  <a href="#chatConsole" aria-current="location">实时对话</a>
+  <a href="#createTask">新建任务</a>
+  <a href="#taskWorkspace">任务队列</a>
+  <a href="#agentMonitor">AI 状态</a>
+  <a href="#agentPanel">Agent 配置</a>
+  <a href="#dropZone">文件投递</a>
+</nav>
+
+<div class="banner" id="banner">
+  <span class="bico">⚠️</span>
+  <div class="btxt"><b>出墙代理未通</b>：FlClash 内核未启动，Codex 现在调不动 tokken.cc（会 502 失败）。点右侧按钮启动 FlClash，再在它界面里<b>点一下「启动」开启内核</b>。</div>
+  <button onclick="startFlclash()">启动 FlClash</button>
+  <button class="ghost" onclick="document.getElementById('banner').classList.remove('on')">知道了</button>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<section class="agent-monitor" id="agentMonitor" aria-labelledby="agentMonitorTitle">
+  <div class="agent-monitor-head">
+    <h2 id="agentMonitorTitle">AI 参与状态</h2>
+    <span id="agentActivityUpdated" aria-live="polite">正在连接状态服务…</span>
+  </div>
+  <div class="agent-grid" id="agentActivityGrid"></div>
+</section>
+
+<div class="console" id="chatConsole">
+  <div class="chead">
+    <span><span class="dotlive" id="livedot"></span>实时对话 · Codex</span>
+    <div class="ccontrols">
+      <label class="log-toggle"><input type="checkbox" id="showToolLogs">显示工具调用</label>
+      <span style="font-weight:400;font-size:11px;color:#9aa1aa" id="consstatus">未连接</span>
+    </div>
+  </div>
+  <div class="cbody" id="consout">
+    <div class="cline system" data-empty-chat="true">暂无对话</div>
+  </div>
+  <div class="cin">
+    <textarea id="consin" rows="1" wrap="soft" placeholder="输入完整需求；Enter 发送，Shift+Enter 换行"
+      oninput="growChatInput(this)" onkeydown="handleChatKey(event)"></textarea>
+    <button onclick="chatSend()">发送</button>
+  </div>
+</div>
+
+<section class="task-create" id="createTask">
+  <h2>新建任务</h2>
+  <div class="bar">
+    <input type="text" id="req" placeholder="输入任务需求">
+    <select id="mode">
+      <option value="cross">交叉验收：Codex出题 + WorkBuddy执行 + Codex验收</option>
+      <option value="trae">交叉验收：Codex出题 + TRAE执行 + Codex验收</option>
+      <option value="fast">全交给 Codex（最快，但自证）</option>
+      <option value="">自动：Codex 可用就用，不可用改派</option>
+    </select>
+    <label class="chk" title="Codex 先评任务难度并推荐模型，给你 3 分钟确认，超时自动采用">
+      <input type="checkbox" id="route" checked>难度路由</label>
+    <button onclick="create()">创建任务</button>
+    <button class="ghost" onclick="advanceAll()">推进一轮</button>
+    <label class="chk"><input type="checkbox" id="auto" checked>自动刷新</label>
+  </div>
+</section>
+
+<div class="main" id="taskWorkspace">
+  <div class="panel">
+    <h2>任务队列</h2>
+    <div id="list"></div>
+  </div>
+
+  <div class="panel">
+    <div id="detail"></div>
+  </div>
+</div>
+
+<details class="drop agents" id="agentPanel">
+  <summary>多 Agent 分工 <span class="section-meta">角色与后端</span></summary>
+  <div class="drop-body">
+    <div class="row" id="agentRoles"></div>
+    <div id="agentBackends"></div>
+    <div class="row" style="margin-top:9px">
+      <button onclick="saveAgents()">保存分工</button>
+      <span class="hint2">文本阶段可绑定 Codex、DeepSeek 或豆包；执行阶段可选 Codex、WorkBuddy 或 TRAE。TRAE 通过本地文件接力，不调用其私有 API；任务进入等待后可从任务详情打开 TRAE 工作区，完成后写入指定交付文件。</span>
+    </div>
+  </div>
+</details>
+
+<details class="drop" id="dropZone">
+  <summary>本地文件投递 <span class="section-meta">文件输入</span></summary>
+  <div class="drop-body">
+    <div class="row">
+      <input type="text" id="dropName" placeholder="投递后的文件名（必填）">
+      <button onclick="pickDropFile()">选择文件…</button>
+      <span style="font-size:11px;color:var(--muted)">或将文件拖入页面</span>
+    </div>
+    <div class="row" style="margin-top:9px">
+      <input type="text" id="dropReq" placeholder="附带任务需求（可选）">
+      <button onclick="dropFile()">投递</button>
+    </div>
+    <div class="fname" id="dropSel"></div>
+    <div class="hint2">投递到 <code>00_inbox/</code>；填写需求时会同时创建任务。</div>
+  </div>
+</details>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let CUR = null, TAB = 'timeline', TIMER = null;
+
+const API = {
+  get: p => fetch(p).then(r => r.json()),
+  post: (p, b) => fetch(p, {method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify(b||{})}).then(r => r.json())
+};
+
+function toast(m){const t=document.getElementById('toast');t.textContent=m;
+  t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400);}
+
+function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function inl(s){return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>')
+                            .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');}
+
+function md(src){
+  const lines = esc(src==null?'':src).split('\n');
+  let out=[], code=false, tbl=false;
+  for(let l of lines){
+    if(l.trim().startsWith('```')){ code=!code; out.push(code?'<pre><code>':'</code></pre>'); continue; }
+    if(code){ out.push(l); continue; }
+    if(/^\s*\|.*\|\s*$/.test(l)){
+      if(!tbl){ out.push('<table>'); tbl=true; }
+      if(/^\s*\|[\s:|-]+\|\s*$/.test(l)) continue;
+      const c=l.trim().slice(1,-1).split('|').map(x=>x.trim());
+      out.push('<tr>'+c.map(x=>'<td>'+inl(x)+'</td>').join('')+'</tr>');
+      continue;
+    } else if(tbl){ out.push('</table>'); tbl=false; }
+    let m;
+    if(m=l.match(/^(#{1,4})\s+(.*)$/)){ const n=m[1].length; out.push(`<h${n}>${inl(m[2])}</h${n}>`); continue; }
+    if(/^\s*([-*]|\d+\.)\s+/.test(l)){ out.push('<li>'+inl(l.replace(/^\s*([-*]|\d+\.)\s+/,''))+'</li>'); continue; }
+    if(l.trim()===''){ out.push('<div class="sp"></div>'); continue; }
+    out.push('<p>'+inl(l)+'</p>');
+  }
+  if(tbl) out.push('</table>');
+  if(code) out.push('</code></pre>');
+  return out.join('\n');
+}
+
+async function loadStatus(){
+  const s = await API.get('/api/status');
+  const st = s.stats||{};
+  const fc = s.flclash_running;
+  window.__mc = s.model_candidates || [];   // 难度路由候选模型清单
+  window.__mw = s.model_confirm_window || 180;
+  document.getElementById('lamps').innerHTML = `
+    <div class="lamp" style="cursor:pointer" onclick="startFlclash()" title="点击启动 FlClash">
+      <span class="dot ${fc?'':'warn'}"></span>FlClash ${fc?'运行中':'未运行(点我启动)'}
+    </div>
+    <div class="lamp"><span class="dot ${s.codex_available?'':'off'}"></span>Codex ${s.codex_available?'就绪':'不可用'}</div>
+    <div class="lamp"><span class="dot ${s.proxy_running?'':'warn'}"></span>代理 ${s.proxy_running?'运行中':'未运行'}</div>
+    <div class="lamp"><span class="dot ${s.upstream_proxy?'':'off'}"></span>${s.upstream_proxy?('出墙: '+s.upstream_proxy):'无出墙代理'}</div>`;
+
+  // 出墙代理没通 → 显示醒目横幅
+  const banner = document.getElementById('banner');
+  if(s.upstream_proxy){ banner.classList.remove('on'); }
+  else { banner.classList.add('on'); }
+
+  const cards = [
+    ['总任务', st.total??0], ['进行中', st.active??0], ['等待中', st.waiting??0],
+    ['已通过', st.passed??0], ['未通过', st.failed??0],
+    ['通过率', st.pass_rate==null?'—':(st.pass_rate+'%')],
+    ['平均轮次', st.avg_rounds??0], ['模型调用', st.total_calls??0]
+  ];
+  document.getElementById('stats').innerHTML =
+    cards.map(([l,n])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+}
+
+async function startFlclash(){
+  toast('正在启动 FlClash…');
+  const r = await API.post('/api/flclash/start');
+  toast(r.msg||(r.ok?'已启动':'失败'));
+  setTimeout(loadStatus, 4000);
+}
+
+// ---- 本地文件投递 ----
+let _dropFile = null;   // 选中的 File 对象（浏览器 DnD / 选择）
+
+function pickDropFile(){
+  let inp = document.getElementById('__dropfile');
+  if(!inp){
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = '__dropfile';
+    inp.style.display = 'none';
+    inp.onchange = e => { const f = e.target.files[0]; if(f) attachDropFile(f); };
+    document.body.appendChild(inp);
+  }
+  inp.value = '';
+  inp.click();
+}
+
+function attachDropFile(f){
+  _dropFile = f;
+  document.getElementById('dropZone').open = true;
+  if(!document.getElementById('dropName').value.trim()){
+    document.getElementById('dropName').value = f.name;
+  }
+  document.getElementById('dropSel').textContent = '已选择：' + f.name +
+    '（' + (f.size/1024).toFixed(1) + ' KB）';
+}
+
+async function dropFile(){
+  const name = document.getElementById('dropName').value.trim();
+  const req  = document.getElementById('dropReq').value.trim();
+  if(!_dropFile){ toast('先选一个文件（按钮或拖拽到上方）'); return; }
+  if(!name){ toast('填一下投递后的文件名'); return; }
+  toast('正在上传…');
+  const buf = await _dropFile.arrayBuffer();
+  const b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+  const r = await API.post('/api/drop', {content: b64, name: name, requirement: req || undefined});
+  if(r.ok){
+    toast(r.id ? ('已投递并建任务 '+r.id) : ('已投递 '+r.file));
+    document.getElementById('dropReq').value='';
+    document.getElementById('dropName').value='';
+    document.getElementById('dropSel').textContent = '';
+    _dropFile = null;
+    loadAll();
+  } else toast('投递失败：'+(r.error||''));
+}
+
+// 拖拽到整页放下即可投递
+window.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('dropZone').style.borderColor = '#245f91'; });
+window.addEventListener('dragleave', e => { if(e.relatedTarget===null) document.getElementById('dropZone').style.borderColor=''; });
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('dropZone').style.borderColor='';
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) attachDropFile(f);
+});
+
+async function loadTasks(){
+  const d = await API.get('/api/tasks');
+  const el = document.getElementById('list');
+  const ts = d.tasks||[];
+  if(!ts.length){ el.innerHTML = `<div class="empty">还没有任务 —— 上方输入需求创建第一个</div>`; return; }
+  el.innerHTML = ts.map(t=>`
+    <div class="task ${CUR===t.id?'on':''}" onclick="pick('${t.id}')">
+      <div class="top">
+        <span class="tid">${t.id}</span>
+        <span class="badge b-${t.status}">${t.stage_cn||t.status}</span>
+        ${t.verdict?`<span class="badge b-${t.verdict}">${t.verdict}</span>`:''}
+      </div>
+      <div class="req">${esc(t.requirement)}</div>
+      <div class="meta">第 ${t.round||1}/${t.max_rounds||3} 轮 · 最佳评分 ${t.best_score==null?'—':t.best_score+'/100'} · 出题 ${t.optimizer||'auto'} · 执行 ${t.executor||'auto'} · 阅卷 ${t.reviewer||'auto'}</div>
+    </div>`).join('');
+  if(CUR) renderDetail();
+}
+
+async function pick(id){ CUR=id; TAB='summary'; loadTasks(); }
+
+async function renderDetail(){
+  const box = document.getElementById('detail');
+  if(!CUR){ box.innerHTML = `<div class="hint">选择一个任务查看详情</div>`; return; }
+  const d = await API.get('/api/task/'+CUR);
+  const t = d.task;
+  if(!t){ box.innerHTML = `<div class="hint">任务不存在</div>`; return; }
+  window.__curTask = t;
+
+  const f = t.files||{};
+  const tabs = [['summary','处理摘要'],['timeline','流转时间线'],['proc','过程记录']];
+  if(f.prompt) tabs.push(['prompt','Prompt']);
+  if(f.outputs && f.outputs.length) tabs.push(['output','产出('+f.outputs.length+')']);
+  if(f.review) tabs.push(['review','验收报告']);
+  if((t.optimization_history||[]).length || f.prompt) tabs.push(['optimization','优化结果']);
+  if(f.handoff) tabs.push(['handoff','TRAE 指令']);
+
+  box.innerHTML = `
+    <div class="dh">
+      <div class="t">${esc(t.requirement)}</div>
+      <div class="m">${t.id} · 状态 ${t.stage_cn||t.status} · 第 ${t.round||1} 轮 ·
+        难度 ${t.difficulty||'-'} · 模型 ${t.selected_model||t.recommended_model||'-'} ·
+        模型调用 ${t.calls||0}/${t.max_calls||10} · 本轮评分 ${t.last_score==null?'—':t.last_score+'/100'} · 最佳评分 ${t.best_score==null?'—':t.best_score+'/100'} · 创建 ${t.created||''}
+        ${t.giveup_reason?' · <b style="color:var(--fail)">'+esc(t.giveup_reason)+'</b>':''}</div>
+      <div class="acts">
+        <button onclick="adv('${t.id}')">推进一步</button>
+        ${(f.outputs&&f.outputs.length)?`
+          <button class="ghost" onclick="openOut('${t.id}')">📂 打开产出文件夹</button>
+          ${firstHtml(f.outputs)?`<button class="ghost" onclick="previewHtml('${t.id}')">🌐 预览网页产出</button>`:''}`:''}
+        ${t.waiting_agent==='trae' && t.on_hold ? `<button onclick="openTrae('${t.id}')">打开 TRAE 工作区</button>`:''}
+        <button class="ghost" onclick="act('${t.id}','reset')">重置</button>
+        <button class="danger" onclick="act('${t.id}','giveup')">终止</button>
+        <select id="ro" style="font-size:12px;padding:5px 8px">
+          <option value="">改派为…</option>
+          <option value="codex">强制 Codex</option>
+          <option value="workbuddy">交给 WorkBuddy</option>
+          <option value="trae">交给 TRAE</option>
+          <option value="auto">自动</option>
+        </select>
+        <button class="ghost" onclick="reroute('${t.id}')">应用改派</button>
+      </div>
+    </div>
+    ${gateHtml(t)}
+    <div class="tabs">${tabs.map(([k,n])=>
+      `<div class="tab ${TAB===k?'on':''}" onclick="tab('${k}')">${n}</div>`).join('')}</div>
+    <div class="body" id="body">加载中…</div>`;
+
+  loadBody(t);
+}
+
+window.__curTask = null;
+function outRel(path){ return path.split('/').slice(2).join('/'); }  // 03_output/T-x/a.html -> a.html
+function firstHtml(outputs){ return (outputs||[]).find(p=>/\.html?$/i.test(p)); }
+
+async function openOut(id){
+  const r = await fetch('/api/task/'+id+'/open').then(x=>x.json());
+  toast(r.ok ? '已在资源管理器打开产出文件夹' : '失败：'+(r.error||''));
+}
+
+async function openTrae(id){
+  const r = await fetch('/api/task/'+id+'/trae/open').then(x=>x.json());
+  toast(r.ok ? r.msg : '打开 TRAE 失败：'+(r.error||r.msg||''));
+}
+
+function previewHtml(id){
+  const t = window.__curTask; if(!t) return;
+  const h = firstHtml((t.files||{}).outputs);
+  if(!h){ toast('该任务没有 html 产出'); return; }
+  window.open('/api/task/'+id+'/file?name='+encodeURIComponent(outRel(h)));
+}
+
+// ---- 可核验的过程记录；不展示模型私有推理文本 ----
+const EV_TAG = {assistant:['Agent回复','assistant'],
+                tool:['工具','tool'], result:['结果','result'],
+                error:['错误','error'], system:['系统','sys']};
+const EV_PHASE = {assess:'难度评估', optimize:'提示词优化', execute:'任务执行', review:'独立验收'};
+
+async function loadProc(box, t){
+  const d = await API.get('/api/task/'+t.id+'/events');
+  const evs = (d.events||[]).filter(e=>e.type!=='reasoning');
+  if(!evs.length){
+    box.innerHTML = `<div class="emptyEv">暂无过程事件 —— 任务可能尚未执行，或创建于过程记录功能上线前。<br>这里记录 Agent 回复、工具/文件操作和结果；模型的私有逐字推理不作为应用输出。</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="proc">` + evs.map(e=>{
+    const [lab, cls] = EV_TAG[e.type] || ['系统','sys'];
+    const text = e.text || e.message || (e.name ? `调用工具: ${e.name}` : '') || '';
+    if(!text) return '';
+    const phase = EV_PHASE[e.phase] ? `<span class="tag tag-sys">${EV_PHASE[e.phase]}</span>` : '';
+    return `<div class="cline"><span class="pt">${esc((e.t||'').slice(11,19))}</span>` +
+           `${phase}<span class="tag tag-${cls}">${lab}</span>${esc(text)}</div>`;
+  }).join('') + `</div>`;
+  box.scrollTop = box.scrollHeight;
+}
+
+// ---- 多 Agent 分工 ----
+const ROLE_CN = {assess:'难度评估', optimize:'出题', execute:'执行', review:'验收'};
+const ACTIVITY_LABEL = {
+  running:'调用中', waiting:'等待接力', waiting_codex:'等待恢复',
+  success:'最近完成', error:'最近失败', interrupted:'已中断', idle:'尚未参与'
+};
+
+function activityClock(value){
+  if(!value) return '—';
+  return value.length >= 19 ? value.slice(11,19) : value;
+}
+
+function activityElapsed(epoch){
+  const seconds = Math.max(0, Math.floor(Date.now()/1000-Number(epoch||0)));
+  if(seconds<60) return `${seconds} 秒`;
+  if(seconds<3600) return `${Math.floor(seconds/60)} 分钟`;
+  return `${Math.floor(seconds/3600)} 小时 ${Math.floor(seconds%3600/60)} 分`;
+}
+
+async function loadAgentActivity(){
+  const grid = document.getElementById('agentActivityGrid');
+  const updated = document.getElementById('agentActivityUpdated');
+  try{
+    const data = await API.get('/api/agents/activity');
+    const rows = data.roles||[];
+    grid.innerHTML = rows.map(a=>{
+      const state = ACTIVITY_LABEL[a.status]||'状态未知';
+      const model = a.model ? ` · ${esc(a.model)}` : '';
+      const task = a.task_id ? `任务 ${esc(a.task_id)}` : '无关联任务';
+      const phase = a.phase ? ` · ${esc(EV_PHASE[a.phase]||a.phase)}` : '';
+      const parallel = a.active_count>1 ? ` · ${a.active_count} 个并行调用` : '';
+      const elapsed = a.status==='running' && a.started_epoch ? ` · 已运行 ${activityElapsed(a.started_epoch)}` : '';
+      return `<article class="agent-state" data-state="${esc(a.status)}">
+        <div class="agent-state-top"><strong>${esc(a.role_label)}</strong><span class="agent-pill">${state}</span></div>
+        <div class="agent-backend">${esc(a.backend_label||a.backend)}${model}</div>
+        <div class="agent-detail">${esc(a.detail||'')}</div>
+        <div class="agent-meta">${task}${phase}${parallel}<br>已调用 ${Number(a.count)||0} 次 · ${activityClock(a.updated_at)}${elapsed}</div>
+      </article>`;
+    }).join('');
+    updated.textContent = `实时监视 · 更新 ${activityClock(data.updated_at)}`;
+  }catch(_){
+    updated.textContent = '状态服务暂不可用';
+  }
+}
+
+async function loadAgents(){
+  const a = await API.get('/api/agents');
+  if(!a.ok) return;
+  window.__agents = a;
+  const names = Object.keys(a.backends||{});
+  const allowed = {assess:['codex_cli','openai'], optimize:['codex_cli','openai'],
+    execute:['codex_cli','workbuddy','trae'], review:['codex_cli','openai']};
+  document.getElementById('agentRoles').innerHTML = Object.keys(ROLE_CN).map(r=>{
+    const roleNames = names.filter(n=>allowed[r].includes((a.backends[n]||{}).type));
+    return `
+    <label class="ar">${ROLE_CN[r]}
+      <select id="ag-${r}" style="padding:5px 8px">
+        ${roleNames.map(n=>`<option value="${n}" ${(a.roles||{})[r]===n?'selected':''}>${esc((a.backends[n].label||n))}</option>`).join('')}
+      </select>
+      <button class="ghost" style="padding:4px 8px;font-size:11px"
+        onclick="testBackendByName(document.getElementById('ag-${r}').value)">测</button>
+    </label>`;
+  }).join('');
+  const ob = names.filter(n=>a.backends[n].type==='openai');
+  document.getElementById('agentBackends').innerHTML = ob.map(n=>{
+    const b = a.backends[n];
+    return `<div class="bk">
+      <b>${esc(b.label||n)}</b>
+      <input type="text" id="ab-${n}-model" value="${esc(b.model||'')}"
+        placeholder="模型名" style="max-width:180px;flex:none">
+      <input type="text" id="ab-${n}-key" value="${esc(b.api_key||'')}"
+        placeholder="api_key（留空 = 不修改）" style="max-width:230px;flex:none">
+      <button class="ghost" style="padding:4px 9px;font-size:11px"
+        onclick="testBackendByName('${n}')">测通</button>
+    </div>`;
+  }).join('');
+}
+
+async function saveAgents(){
+  const roles = {};
+  for(const r of Object.keys(ROLE_CN)){
+    const el = document.getElementById('ag-'+r);
+    if(el) roles[r] = el.value;
+  }
+  const backends = {};
+  (window.__agents ? Object.keys(window.__agents.backends) : []).forEach(n=>{
+    const m = document.getElementById('ab-'+n+'-model');
+    const k = document.getElementById('ab-'+n+'-key');
+    if(m || k){
+      backends[n] = {};
+      if(m) backends[n].model = m.value.trim();
+      if(k) backends[n].api_key = k.value.trim();
+    }
+  });
+  const res = await API.post('/api/agents', {roles, backends});
+  toast(res.ok ? '分工已保存，对之后的任务生效' : '保存失败：'+(res.error||''));
+  loadAgents();
+  loadAgentActivity();
+}
+
+async function testBackendByName(n){
+  if(!n){ toast('先选后端'); return; }
+  toast('测试 '+n+' …');
+  const r = await API.post('/api/agents/test', {backend:n});
+  toast((r.ok ? '✅ ' : '❌ ') + (r.msg || (r.ok?'可用':'不可用')));
+}
+
+async function loadBody(t){
+  const b = document.getElementById('body');
+  const f = t.files||{};
+  if(TAB==='summary'){ return showProcessSummary(b, t); }
+  if(TAB==='timeline'){
+    const h = t.history||[];
+    if(!h.length){ b.innerHTML = `<div class="hint">暂无流转记录（该任务创建于历史记录功能之前）</div>`; return; }
+    b.innerHTML = `<ul class="tl">`+h.slice().reverse().map(x=>
+      `<li><div class="tt">${x.t}</div><div class="tv">${x.from||'—'} → <b>${x.to}</b>${x.action?' （'+x.action+'）':''}</div></li>`
+    ).join('')+`</ul>`;
+    return;
+  }
+  if(TAB==='prompt'){ return showFile(b, f.prompt); }
+  if(TAB==='proc'){ return loadProc(b, t); }
+  if(TAB==='review'){ return showFile(b, f.review); }
+  if(TAB==='optimization'){ return showOptimizationHistory(b, t); }
+  if(TAB==='handoff'){ return showFile(b, f.handoff); }
+  if(TAB==='output'){
+    const list = f.outputs||[];
+    if(list.length===1) return showFile(b, list[0]);
+    b.innerHTML = list.map(p=>`<div style="margin-bottom:6px"><span class="filelink" onclick="showFile(document.getElementById('body'),'${p}')">${p}</span></div>`).join('')
+      + `<div id="fbox"></div>`;
+    if(list.length) showFile(document.getElementById('fbox'), list[0]);
+    return;
+  }
+  b.innerHTML = `<div class="hint">—</div>`;
+}
+
+function showOptimizationHistory(box, t){
+  const history = (t.optimization_history||[]).slice().reverse();
+  const f = t.files||{};
+  const bestPrompt = t.best_prompt_file || t.prompt_file || f.prompt;
+  const outputs = f.outputs||[];
+  const criteria = t.evaluation_criteria||[];
+  box.innerHTML = `<div class="result-section"><h3>当前最佳提示词 ${t.best_score==null?'':`· ${t.best_score}/100 · 第 ${t.best_round||'-'} 轮`}</h3>`+
+    (bestPrompt?`<span class="filelink" onclick="showFile(document.getElementById('body'),'${esc(bestPrompt)}')">查看最佳版本</span>`:`<div class="hint">提示词尚未生成</div>`)+`</div>`+
+    `<div class="result-section"><h3>最终交付</h3>`+
+    (outputs.length?`<div class="result-links">${outputs.map(p=>`<span class="filelink" onclick="showFile(document.getElementById('body'),'${esc(p)}')">${esc(p.split('/').pop())}</span>`).join('')}</div>`:`<div class="hint">暂无交付文件</div>`)+`</div>`+
+    (criteria.length?`<div class="result-section"><h3>固定验收标准</h3><ul>${criteria.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:'')+
+    `<div class="result-section"><h3>优化轮次</h3>`+
+    (history.length?`<div class="hint" style="padding:0 0 8px">各轮使用首轮固定标准评分；只保留评分严格提升的最佳版本。</div>`+
+    `<ul class="tl">` + history.map(x=>{
+      const score = x.score==null ? '未提供评分' : `${x.score}/100`;
+      const decision = x.improved===true ? '新最佳' : x.improved===false ? '未提升' : '不比较';
+      return `<li><div class="tt">第 ${x.round} 轮 · ${esc(decision)}</div>`+
+        `<div class="tv"><b>${esc(score)}</b> · ${esc(x.verdict||'')} · `+
+        (x.prompt_file?`<span class="filelink" onclick="showFile(document.getElementById('body'),'${esc(x.prompt_file)}')">本轮提示词</span> · `:'')+
+        (x.review_file?`<span class="filelink" onclick="showFile(document.getElementById('body'),'${esc(x.review_file)}')">评分报告</span>`:'')+
+        `</div></li>`;
+    }).join('') + `</ul>`:`<div class="hint">暂无评分记录</div>`)+`</div>`;
+}
+
+function showProcessSummary(box, t){
+  const h=t.history||[], opt=t.optimization_history||[], f=t.files||{};
+  const stateNames={NEW:'待开始',ASSESSED:'已评估',PROMPT_READY:'提示词就绪',DONE:'待验收',PASS:'验收通过',FAIL:'验收未通过',GIVE_UP:'已停止',WAITING_EXECUTE:'等待执行',WAITING_REVIEW:'等待验收',WAITING_OPTIMIZE:'等待优化',AWAIT_MODEL_CONFIRM:'待确认模型'};
+  const status=stateNames[t.status]||t.stage_cn||t.status||'未知';
+  const best=t.best_score==null?'—':`${t.best_score}/100`;
+  const phaseRows=[];
+  if(t.difficulty) phaseRows.push(['难度评估',`难度 ${t.difficulty}${t.recommended_model?`，建议模型 ${t.recommended_model}`:''}`]);
+  if(t.prompt_file||opt.length) phaseRows.push(['提示词优化',`${opt.length||1} 轮，最佳评分 ${best}${t.best_round?`（第 ${t.best_round} 轮）`:''}`]);
+  if(t.executor) phaseRows.push(['任务执行',`执行者：${t.executor}${t.waiting_agent?`，当前由 ${t.waiting_agent} 接力`:''}`]);
+  if(t.verdict) phaseRows.push(['独立验收',`${t.verdict}${t.last_score==null?'':`，本轮 ${t.last_score}/100`}`]);
+  const flow=h.slice().reverse().map(x=>`<li><div class="tt">${esc(x.t||'')}</div><div class="tv">${esc(stateNames[x.from]||x.from||'—')} → <b>${esc(stateNames[x.to]||x.to||'—')}</b>${x.action?`（${esc(x.action)}）`:''}</div></li>`).join('');
+  const resultFiles=(f.outputs||[]).map(p=>`<span class="filelink" onclick="showFile(document.getElementById('body'),'${esc(p)}')">${esc(p.split('/').pop())}</span>`).join(' · ');
+  box.innerHTML=`<div class="summary-lead">按任务状态、Agent 交付、工具事件与验收报告整理的可核验过程摘要。</div>`+
+    `<div class="summary-metrics"><div class="summary-metric"><b>${esc(status)}</b><span>当前状态</span></div>`+
+    `<div class="summary-metric"><b>${t.round||1}/${t.max_rounds||3}</b><span>当前轮次</span></div>`+
+    `<div class="summary-metric"><b>${t.calls||0}/${t.max_calls||10}</b><span>模型调用</span></div>`+
+    `<div class="summary-metric"><b>${esc(best)}</b><span>最佳评分</span></div></div>`+
+    `<div class="result-section"><h3>处理步骤</h3>`+
+    (phaseRows.length?`<ul>${phaseRows.map(([name,desc])=>`<li><b>${esc(name)}</b>：${esc(desc)}</li>`).join('')}</ul>`:`<div class="hint">任务尚未产生阶段结果</div>`)+`</div>`+
+    `<div class="result-section"><h3>流转记录</h3>${flow?`<ul class="tl">${flow}</ul>`:`<div class="hint">暂无流转记录</div>`}</div>`+
+    `<div class="result-section"><h3>交付文件</h3>${resultFiles||`<div class="hint">暂无交付文件</div>`}</div>`+
+    (t.giveup_reason?`<div class="result-section"><h3>停止原因</h3><div>${esc(t.giveup_reason)}</div></div>`:'');
+}
+
+async function showFile(box, path){
+  if(!box) return;
+  if(!path){ box.innerHTML = `<div class="hint">无文件</div>`; return; }
+  const d = await API.get('/api/file?path='+encodeURIComponent(path));
+  box.innerHTML = d.ok
+    ? `<div class="hint" style="padding:0 0 8px">${esc(path)}</div>` + md(d.content)
+    : `<div class="hint">读取失败：${esc(d.content)}</div>`;
+}
+
+function tab(k){ TAB=k; renderDetail(); }
+
+async function create(){
+  const r = document.getElementById('req').value.trim();
+  if(!r){ toast('先写点需求'); return; }
+  const mode = document.getElementById('mode').value;
+  const route = document.getElementById('route').checked;
+  const res = await API.post('/api/task', {requirement:r, mode:mode||undefined, model_route:route});
+  if(res.ok){ document.getElementById('req').value=''; toast('已创建 '+res.id); CUR=res.id; loadAll(); }
+  else toast('创建失败：'+(res.error||''));
+}
+
+async function adv(id){
+  await API.post('/api/task/'+id+'/advance'); toast('已在后台推进');
+  setTimeout(loadAll, 1500);
+}
+
+async function advanceAll(){ await adv(CUR||''); }
+
+async function act(id, a){
+  const res = await API.post('/api/task/'+id+'/action', {action:a});
+  toast(res.ok ? ('已'+(a==='reset'?'重置':'终止')) : ('失败：'+res.error));
+  loadAll();
+}
+
+// ---- 难度路由闸门：确认模型面板 ----
+function gateHtml(t){
+  if(t.status !== 'AWAIT_MODEL_CONFIRM') return '';
+  const cands = window.__mc || [];
+  const opts = cands.map(m =>
+    `<option value="${m}" ${m===t.recommended_model?'selected':''}>${m}</option>`).join('');
+  const remain = Math.max(0, (t.model_deadline||0) - Date.now()/1000);
+  const mm = String(Math.floor(remain/60)).padStart(2,'0');
+  const ss = String(Math.floor(remain%60)).padStart(2,'0');
+  return `<div class="mgate">
+    <div class="mh">⏳ 难度路由闸门 · 待你确认模型</div>
+    <div class="mr">Codex 评估难度 <b>${esc(t.difficulty||'-')}</b> · 推荐模型 <b>${esc(t.recommended_model||'-')}</b>
+      <span class="rsn">${esc(t.model_reason||'')}</span></div>
+    <div class="mrow">
+      <span class="wtxt">倒计时 <span class="cd" data-deadline="${t.model_deadline||0}">${mm}:${ss}</span>
+        （超时自动采用推荐）</span>
+      <select id="sel-${t.id}">${opts}</select>
+      <button onclick="confirmModel('${t.id}')">确认模型</button>
+    </div>
+  </div>`;
+}
+
+async function confirmModel(tid){
+  const sel = document.getElementById('sel-'+tid);
+  const model = sel ? sel.value : '';
+  const res = await API.post('/api/task/'+tid+'/model', {model});
+  if(res.ok){ toast('已确认：'+res.msg); loadAll(); }
+  else toast('确认失败：'+(res.error||''));
+}
+
+async function reroute(id){
+  const v = document.getElementById('ro').value;
+  if(!v){ toast('先选一个角色'); return; }
+  await API.post('/api/task/'+id+'/action',
+    {action:'reroute', optimizer:v, executor:v, reviewer:v});
+  toast('已改派为 '+v); loadAll();
+}
+
+async function loadAll(){ await loadStatus(); await loadTasks(); await loadAgentActivity(); }
+
+document.getElementById('auto').addEventListener('change', e=>{
+  clearInterval(TIMER);
+  if(e.target.checked) TIMER = setInterval(loadAll, 5000);
+});
+
+loadAll();
+loadAgents();
+TIMER = setInterval(loadAll, 5000);
+setInterval(loadAgentActivity, 2500);
+
+// 倒计时每秒刷新（读已渲染的 data-deadline，不重新拉取）
+setInterval(()=>{
+  document.querySelectorAll('.cd').forEach(el=>{
+    const dl = parseFloat(el.dataset.deadline||'0');
+    const rem = Math.max(0, dl - Date.now()/1000);
+    const m = String(Math.floor(rem/60)).padStart(2,'0');
+    const s = String(Math.floor(rem%60)).padStart(2,'0');
+    el.textContent = `${m}:${s}`;
+    el.classList.toggle('urgent', rem>0 && rem<60);
+  });
+}, 1000);
+
+// ============ 实时控制台 ============
+let ES = null;
+let LAST_CHAT_ERROR = '';
+
+function consLog(evt){
+  const box = document.getElementById('consout');
+  const t = evt.type || 'sys';
+  if(t==='reasoning' || t==='done') return;
+  if(t==='assistant' && evt.role && evt.role!=='assistant') return;
+  const tagMap = {user:'你', assistant:'关键进展', tool:'工具', result:'结果', error:'错误', system:'状态', sys:'状态'};
+  let text = '', tag = tagMap[t] || '状态', kind = t;
+  if(t==='user') text = evt.text || '';
+  else if(t==='assistant') text = evt.text || '';
+  else if(t==='tool') text = `调用工具: ${evt.name}${evt.args?' — '+evt.args:''}`;
+  else if(t==='result') text = `结果: ${evt.out||''}`;
+  else if(t==='error') text = `⚠ ${evt.message||''}`;
+  else {
+    text = evt.message || '';
+    if(text.startsWith('已发送给 Codex：')) return;
+    if(text === '调用结束') text = '本轮已结束';
+  }
+  if(!text) return;
+  if(t==='user') LAST_CHAT_ERROR = '';
+  if(t==='error' && LAST_CHAT_ERROR===text) return;
+  if(t==='error') LAST_CHAT_ERROR = text;
+  box.querySelector('[data-empty-chat]')?.remove();
+  const div = document.createElement('div');
+  div.className = `cline ${kind}`;
+  div.dataset.type = t;
+  if(t==='error') div.dataset.message = text;
+  const badge = document.createElement('span');
+  badge.className = `tag tag-${t==='system'||t==='sys'?'sys':t}`;
+  badge.textContent = tag;
+  const message = document.createElement('span');
+  message.className = 'msg';
+  message.textContent = text;
+  div.append(badge, message);
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function connectSSE(){
+  if(ES){ ES.close(); }
+  ES = new EventSource('/api/events?bus=chat');
+  ES.addEventListener('hello', ()=>{ setLive(true); });
+  ES.addEventListener('msg', (e)=>{
+    try{ consLog(JSON.parse(e.data)); }catch(_){}
+  });
+  ES.onerror = ()=>{ setLive(false); };
+}
+
+function setLive(on){
+  document.getElementById('livedot').className = 'dotlive' + (on?'':' off');
+  document.getElementById('consstatus').textContent = on?'已连接':'重连中…';
+}
+
+async function chatSend(){
+  const inp = document.getElementById('consin');
+  const msg = inp.value.trim();
+  if(!msg) return;
+  inp.value = '';
+  growChatInput(inp);
+  consLog({type:'user', text:msg});
+  const r = await API.post('/api/chat', {message:msg, bus:'chat'});
+  if(!r.ok) consLog({type:'error', message: r.error||'发送失败'});
+}
+
+document.getElementById('showToolLogs').addEventListener('change', e=>{
+  document.querySelector('.console').classList.toggle('show-tools', e.target.checked);
+});
+
+document.querySelectorAll('.section-nav a').forEach(link=>link.addEventListener('click',()=>{
+  document.querySelectorAll('.section-nav a').forEach(item=>item.removeAttribute('aria-current'));
+  link.setAttribute('aria-current','location');
+  const target = document.querySelector(link.getAttribute('href'));
+  if(target?.tagName==='DETAILS') target.open = true;
+}));
+
+function growChatInput(el){
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,220)+'px';
+}
+
+function handleChatKey(event){
+  if(event.key==='Enter'&&!event.shiftKey){
+    event.preventDefault();
+    chatSend();
+  }
+}
+
+connectSSE();
+</script>
+</body>
+</html>

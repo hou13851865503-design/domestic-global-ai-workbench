@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 流水线看板 · ai-relay</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --border:#e3e6eb; --text:#1f2329;
+    --muted:#8a919e; --accent:#2563eb; --accent-soft:#eff4ff;
+    --pass:#0f9960; --fail:#d93026; --warn:#d97706; --wait:#7c3aed;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); padding:24px; line-height:1.6;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+  h1{font-size:22px;font-weight:600}
+  .sub{font-size:13px;color:var(--muted)}
+  .codex-badge{font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--border);
+    padding:4px 10px;border-radius:20px}
+
+  .flow{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:14px 18px;margin-bottom:20px;flex-wrap:wrap;font-size:13px}
+  .node{padding:6px 12px;border-radius:8px;background:var(--accent-soft);color:var(--accent);font-weight:500;white-space:nowrap}
+  .node.dim{background:#f1f2f4;color:var(--muted);font-weight:400}
+  .arrow{color:var(--muted)}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px}
+  .panel h2{font-size:15px;font-weight:600;margin-bottom:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  input,select,textarea,button{font-family:inherit;font-size:14px;padding:9px 12px;border-radius:8px;
+    border:1px solid var(--border);background:#fff;color:var(--text)}
+  input[type=text]{flex:1;min-width:260px}
+  button{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:500}
+  button:hover{opacity:.88}
+  button.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .stat .n{font-size:24px;font-weight:600}
+  .stat .l{font-size:12px;color:var(--muted)}
+
+  .task{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px}
+  .task-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .tid{font-family:ui-monospace,Consolas,monospace;font-size:13px;color:var(--muted)}
+  .req{font-size:14px;flex:1;min-width:200px}
+  .badge{font-size:12px;padding:3px 10px;border-radius:20px;font-weight:500;white-space:nowrap}
+  .b-NEW{background:#eef2f7;color:#4a5568}
+  .b-PROMPT_READY{background:#e0f2fe;color:#0369a1}
+  .b-WAITING_OPTIMIZE{background:#fae8ff;color:#a21caf}
+  .b-WAITING_EXECUTE{background:#ede9fe;color:var(--wait)}
+  .b-WAITING_REVIEW{background:#cffafe;color:#0e7490}
+  .b-BLOCKED{background:#fee2e2;color:var(--fail)}
+  .b-DONE{background:#fef3c7;color:#92400e}
+  .b-PASS{background:#d1fae5;color:var(--pass)}
+  .b-FAIL{background:#fee2e2;color:var(--fail)}
+  .b-GIVE_UP{background:#f1f2f4;color:#6b7280}
+  .b-AWAIT_MODEL_CONFIRM{background:#fff7ed;color:#c2410c}
+  .b-ASSESSED{background:#ecfeff;color:#0e7490}
+
+  .mgate{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;
+    padding:10px 12px;border:1px dashed #f59e0b;border-radius:8px;background:#fffbeb;font-size:13px}
+  .mgate .lab{color:#92400e;font-weight:500}
+  .mgate select{padding:6px 8px;font-size:13px}
+  .mgate .cd{font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#b45309}
+  .mgate .cd.urgent{color:#dc2626}
+  .mgate button{background:#c2410c;padding:6px 14px;font-size:13px}
+  .meta{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .files{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .files a{font-size:12px;color:var(--accent);text-decoration:none;background:var(--accent-soft);
+    padding:4px 10px;border-radius:6px}
+  .files a:hover{text-decoration:underline}
+  .empty{text-align:center;color:var(--muted);padding:40px;font-size:14px}
+  .toast{position:fixed;bottom:24px;right:24px;background:#1f2329;color:#fff;padding:12px 18px;
+    border-radius:10px;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--pass);margin-right:6px}
+  .dot.off{background:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>AI 流水线看板</h1>
+      <div class="sub">Codex 出题与阅卷 · WorkBuddy 答题 · 文件系统作总线</div>
+    </div>
+    <div class="codex-badge" id="codex-badge">检测中…</div>
+  </header>
+
+  <div class="flow">
+    <span class="node">00_inbox<br><small>原始需求</small></span><span class="arrow">→</span>
+    <span class="node">Codex 优化</span><span class="arrow">→</span>
+    <span class="node">02_prompts<br><small>结构化 prompt</small></span><span class="arrow">→</span>
+    <span class="node">执行产出</span><span class="arrow">→</span>
+    <span class="node">03_output<br><small>成果</small></span><span class="arrow">→</span>
+    <span class="node">Codex 验收</span><span class="arrow">→</span>
+    <span class="node">04_review<br><small>报告</small></span><span class="arrow">↺ 失败打回</span>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="panel">
+    <h2>新建任务</h2>
+    <div class="row">
+      <input type="text" id="req" placeholder="用大白话描述你想做的事，例如：写一个批量重命名照片的 Python 脚本">
+      <select id="mode">
+        <option value="auto">自动：Codex 可用就用，不可用改派 WorkBuddy</option>
+        <option value="cross">交叉验证：Codex 出题+阅卷，WorkBuddy 执行</option>
+        <option value="workbuddy">全部交给 WorkBuddy</option>
+        <option value="codex">全部交给 Codex</option>
+      </select>
+      <button onclick="createTask()">创建</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>任务列表</h2>
+    <div class="row" style="margin-bottom:14px">
+      <button onclick="advance()" id="adv-btn">▶ 推进一轮</button>
+      <button class="ghost" onclick="load()">刷新</button>
+      <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="auto" checked style="width:auto"> 每 5 秒自动刷新
+      </label>
+    </div>
+    <div id="tasks"></div>
+  </div>
+
+  <div class="sub" id="footer"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let timer = null;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  return await r.json();
+}
+
+async function load(){
+  const s = await api('/api/state');
+  const tasks = Object.values(s.tasks || {});
+
+  document.getElementById('codex-badge').innerHTML = s.codex_bin
+    ? `<span class="dot"></span>Codex 就绪`
+    : `<span class="dot off"></span>未找到 codex.exe`;
+
+  // 统计
+  const cnt = {};
+  tasks.forEach(t => cnt[t.status] = (cnt[t.status]||0)+1);
+  const stats = [
+    ['总任务', tasks.length], ['进行中', tasks.filter(t=>!['PASS','GIVE_UP'].includes(t.status)).length],
+    ['已通过', cnt.PASS||0], ['未通过', cnt.FAIL||0], ['等待中', cnt.WAITING_WORKBUDDY||0]
+  ];
+  document.getElementById('stats').innerHTML = stats.map(([l,n])=>
+    `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+
+  // 任务卡
+  const el = document.getElementById('tasks');
+  if(!tasks.length){
+    el.innerHTML = `<div class="empty">还没有任务 —— 在上面输入需求，点「创建」开始</div>`;
+  } else {
+    el.innerHTML = tasks.slice().reverse().map(t=>{
+      const links = [];
+      if(t.prompt_file) links.push(['查看 Prompt', t.prompt_file]);
+      if(t.output_dir)  links.push(['查看产出', t.output_dir + '/RESULT.md']);
+      if(t.review_file) links.push(['验收报告', t.review_file]);
+      const verdictTxt = t.verdict ? ` · 验收 ${t.verdict}` : '';
+      const diffTxt = t.difficulty ? ` · 难度 ${t.difficulty}` : '';
+      const modelTxt = t.selected_model ? ` · 模型 ${t.selected_model}`
+                      : (t.recommended_model ? ` · 推荐 ${t.recommended_model}` : '');
+      // 难度路由确认闸门面板
+      let gate = '';
+      if (t.status === 'AWAIT_MODEL_CONFIRM') {
+        const opts = (s.model_candidates || []).map(m =>
+          `<option value="${m}" ${m === t.recommended_model ? 'selected' : ''}>${m}</option>`).join('');
+        const remain = Math.max(0, (t.model_deadline||0) - Date.now()/1000);
+        const mm = String(Math.floor(remain/60)).padStart(2,'0');
+        const ss = String(Math.floor(remain%60)).padStart(2,'0');
+        gate = `<div class="mgate">
+          <span class="lab">⏳ 难度 <b>${t.difficulty}</b> · Codex 推荐 <b>${t.recommended_model}</b></span>
+          <span class="cd" data-deadline="${t.model_deadline||0}">${mm}:${ss}</span>
+          <select id="sel-${t.id}">${opts}</select>
+          <button onclick="confirmModel('${t.id}')">确认模型</button>
+          <span style="color:#a16207">${t.model_reason||''}</span>
+        </div>`;
+      }
+      return `<div class="task">
+        <div class="task-head">
+          <span class="tid">${t.id}</span>
+          <span class="badge b-${t.status}">${t.status}</span>
+          <span class="req">${escapeHtml(t.requirement)}</span>
+        </div>
+        <div class="meta">出题 ${t.optimizer||'auto'} · 执行 ${t.executor||'auto'} · 阅卷 ${t.reviewer||'auto'} · 第 ${t.round||1} 轮 · 创建于 ${t.created}${verdictTxt}${diffTxt}${modelTxt}</div>
+        ${gate}
+        ${links.length ? `<div class="files">${links.map(([n,h])=>`<a href="/${h}" target="_blank">${n}</a>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('footer').textContent = '最后更新 ' + (s.updated_at || '');
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function createTask(){
+  const req = document.getElementById('req').value.trim();
+  if(!req){ toast('请先写点需求'); return; }
+  const mode = document.getElementById('mode').value;
+  const MODES = {
+    auto:       {optimizer:'auto',      executor:'auto',      reviewer:'auto'},
+    cross:      {optimizer:'codex',     executor:'workbuddy', reviewer:'codex', on_unavailable:'wait'},
+    workbuddy:  {optimizer:'workbuddy', executor:'workbuddy', reviewer:'workbuddy'},
+    codex:      {optimizer:'codex',     executor:'codex',     reviewer:'codex'},
+  };
+  const r = await api('/api/new', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({requirement:req, ...(MODES[mode]||MODES.auto)})});
+  if(r.ok){ document.getElementById('req').value=''; toast('已创建 ' + r.id); load(); }
+  else toast('创建失败：' + (r.error||'未知错误'));
+}
+
+async function advance(){
+  const btn = document.getElementById('adv-btn');
+  btn.disabled = true; btn.textContent = '推进中…';
+  await api('/api/advance', {method:'POST'});
+  toast('已在后台推进，稍等几秒看结果');
+  setTimeout(()=>{ btn.disabled=false; btn.textContent='▶ 推进一轮'; }, 4000);
+}
+
+async function confirmModel(tid){
+  const sel = document.getElementById('sel-'+tid);
+  const model = sel ? sel.value : '';
+  const r = await api('/api/confirm_model', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({task_id:tid, model})});
+  if(r.ok){ toast('已确认 '+r.msg); load(); }
+  else toast('确认失败：'+(r.error||r.msg||'未知错误'));
+}
+
+document.getElementById('auto').addEventListener('change', e=>{
+  clearInterval(timer);
+  if(e.target.checked) timer = setInterval(load, 5000);
+});
+
+load();
+timer = setInterval(load, 5000);
+
+// 倒计时每秒刷新（不重新拉取，只读已渲染的 data-deadline）
+setInterval(()=>{
+  document.querySelectorAll('.cd').forEach(el=>{
+    const dl = parseFloat(el.dataset.deadline||'0');
+    const rem = Math.max(0, dl - Date.now()/1000);
+    const m = String(Math.floor(rem/60)).padStart(2,'0');
+    const s = String(Math.floor(rem%60)).padStart(2,'0');
+    el.textContent = `${m}:${s}`;
+    el.classList.toggle('urgent', rem > 0 && rem < 60);
+  });
+}, 1000);
+</script>
+</body>
+</html>
