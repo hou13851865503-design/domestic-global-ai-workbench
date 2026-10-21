@@ -1,8 +1,8 @@
-# AI Relay Multi-Agent Workbench
+# 国内外 AI 协同工作台
 
-**A local-first desktop workbench for coordinating AI agents.** Route planning, prompt optimization, execution, and independent review to different backends, then follow real call and handoff status in one dashboard.
+**Domestic & Global AI Collaboration Workbench** is a local-first Windows desktop tool for coordinating AI agents. Route planning, prompt optimization, execution, and independent review to different backends, then follow real call and handoff status in one dashboard.
 
-**AI 多 Agent 流水线工作台**是一个本地优先的 Windows 桌面工具。它把任务拆分为评估、提示词优化、执行和独立验收，可按角色分配不同 AI 后端，并在工作台实时查看 Agent 的调用、接力等待与最近结果。
+**国内外 AI 协同工作台**是一个本地优先的 Windows 桌面工具。它把任务拆分为评估、提示词优化、执行和独立验收，可按角色分配不同 AI 后端，并在工作台实时查看 Agent 的调用、接力等待与最近结果。
 
 > This repository contains the app and source code. It does not include personal API keys, task history, local logs, or runtime state.
 
