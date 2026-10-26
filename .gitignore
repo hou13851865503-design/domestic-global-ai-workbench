@@ -5,10 +5,6 @@ ai-relay/00_inbox/
 ai-relay/02_prompts/
 ai-relay/03_output/
 ai-relay/04_review/
-ai-relay/PROMPTS/
-ai-relay/OUTPUT/
-ai-relay/REVIEW/
-ai-relay/INBOX/
 
 # Python and local tooling
 __pycache__/
@@ -22,6 +18,7 @@ build/
 dist/
 .build/
 *.spec
+*.exe
 .idea/
 .vscode/
 Thumbs.db
