@@ -7,7 +7,7 @@
 <style>
 :root{
   --bg:#f3f5f7; --card:#fff; --border:#dfe3e8; --text:#20252b; --muted:#707985;
-  --accent:#245f91; --soft:#eaf2f8; --pass:#13866b; --fail:#c2413b;
+  --accent:#167c6b; --accent-dark:#0f5a4d; --soft:#e3f2ed; --pass:#13866b; --fail:#c2413b;
   --warn:#d97706; --wait:#7c3aed; --ok:#0f9960;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -18,6 +18,7 @@ body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-s
 header{display:flex;align-items:center;justify-content:space-between;gap:14px;
   flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
 h1{font-size:19px;font-weight:650;line-height:1.25}
+.kicker{display:inline-block;margin-bottom:6px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;background:linear-gradient(90deg,#0f5a4d,#1fa08a 60%,#bd801e);-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{font-size:12px;color:var(--muted)}
 .lamps{display:flex;gap:10px;flex-wrap:wrap}
 .lamp{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);
@@ -37,9 +38,9 @@ h1{font-size:19px;font-weight:650;line-height:1.25}
   overflow:hidden;background:var(--card);border:1px solid var(--border);border-radius:7px}
 .stat{min-width:0;padding:10px 13px;border-right:1px solid var(--border)}
 .stat:last-child{border-right:0}
-.stat .n{font-size:20px;font-weight:650;line-height:1.25;font-variant-numeric:tabular-nums}
+.stat .n{font-size:23px;font-weight:700;line-height:1.2;letter-spacing:.5px;font-variant-numeric:tabular-nums}
 .stat .l{font-size:11px;color:var(--muted);white-space:nowrap}
-.stat:nth-child(2) .n{color:#245f91}
+.stat:nth-child(2) .n{color:var(--accent)}
 .stat:nth-child(3) .n{color:#a56b08}
 .stat:nth-child(4) .n{color:var(--pass)}
 .stat:nth-child(5) .n{color:var(--fail)}
@@ -73,8 +74,8 @@ input,select,button,textarea{font-family:inherit;font-size:13px;padding:8px 10px
 input[type=text]{flex:1;min-width:240px}
 button{background:var(--accent);color:#fff;border:1px solid var(--accent);cursor:pointer;font-weight:550;
   transition:background .12s,border-color .12s,box-shadow .12s}
-button:hover{background:#1b4f7a;border-color:#1b4f7a}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #73a8cc;outline-offset:2px}
+button:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #5fb3a4;outline-offset:2px}
 button.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}
 button.ghost:hover{background:#f1f4f7;border-color:#c3cbd4}
 button.danger{background:#fff;color:var(--fail);border:1px solid #f3c7c3}
@@ -124,6 +125,30 @@ label.chk input{width:auto}
 .mgate .cd{font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#b45309}
 .mgate .cd.urgent{color:#dc2626}
 .mgate button{background:#c2410c;padding:6px 16px}
+
+/* ---- 多 AI 协作 · 方案博弈面板 ---- */
+.dpanel{margin:12px 0;border:1px solid var(--border);border-radius:8px;background:var(--card);overflow:hidden}
+.dph{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 13px;background:var(--soft);border-bottom:1px solid var(--border)}
+.dph b{font-size:13px;color:var(--accent-dark)}
+.dstag{font-size:11px;color:var(--muted)}
+.dctrls{margin-left:auto;display:flex;align-items:center;gap:8px}
+.dok{font-size:11px;color:var(--accent-dark)}
+.derr{margin:10px 13px 0;padding:8px 10px;border-radius:6px;background:#fef2f2;color:var(--fail);font-size:12px}
+.dsec{padding:10px 13px;border-top:1px dashed var(--border)}
+.dsh{font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px}
+.dsh2{font-size:11px;font-weight:600;color:#92400e;margin-bottom:5px}
+.droles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.drole{padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:#fafbfc}
+.drole .dn{font-size:12px;font-weight:600;margin-bottom:4px}
+.drole .dm{font-size:10px;color:var(--muted);font-weight:400;margin-left:6px}
+.dcand{padding:10px 11px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:#fff}
+.dcand.rec{border-color:var(--accent)}
+.dcand .dh2{font-size:12px;font-weight:600;margin-bottom:5px}
+.recmk{font-size:10px;color:#fff;background:var(--accent);border-radius:999px;padding:2px 7px;margin-left:6px}
+.drow{margin-top:8px}
+.ddebate{padding:9px 10px;border-radius:6px;background:#fffbeb;border:1px solid #fde68a;margin-bottom:8px}
+.dt{font-size:12px;color:#3a424b;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+@media (max-width:560px){ .droles{grid-template-columns:1fr} }
 
 .empty{padding:36px;text-align:center;color:var(--muted);font-size:13px}
 
@@ -201,7 +226,7 @@ label.chk input{width:auto}
 .tag-result{background:#14532d;color:#bbf7d0}
 .tag-user{background:#1e3a8a;color:#dbeafe}
 .tag-error{background:#7f1d1d;color:#fecaca}
-.dotlive{width:8px;height:8px;border-radius:50%;background:#34d399;display:inline-block;margin-right:6px}
+.dotlive{width:8px;height:8px;border-radius:50%;background:#1fa08a;display:inline-block;margin-right:6px}
 .dotlive.off{background:#6b7280}
 
 /* 代理引导横幅 */
@@ -260,6 +285,79 @@ label.chk input{width:auto}
 .task-create select{min-width:285px;flex:0 1 360px}
 .task-create .chk{white-space:nowrap}
 
+/* ===== 视觉增强（美化） ===== */
+:root{
+  --shadow-sm:0 1px 3px rgba(20,34,47,.08),0 1px 2px rgba(20,34,47,.06);
+  --shadow-md:0 10px 28px rgba(20,34,47,.12);
+  --radius:12px;
+}
+*{ -webkit-font-smoothing:antialiased; }
+body::before{ content:""; display:block; height:4px; background:linear-gradient(90deg,#0f5a4d,#1fa08a,#bd801e); }
+body::after{ content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(40vw 40vw at 10% 0%, rgba(31,160,138,.07), transparent 60%),
+    radial-gradient(36vw 36vw at 92% 8%, rgba(189,128,30,.05), transparent 60%),
+    radial-gradient(44vw 44vw at 80% 100%, rgba(22,124,107,.07), transparent 60%);
+  filter: blur(10px); animation: auroraDrift 26s ease-in-out infinite alternate; }
+@keyframes auroraDrift{ 0%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(1.5%,-1.5%,0) scale(1.05)} 100%{transform:translate3d(-1.5%,1.5%,0) scale(1.03)} }
+header{ background:linear-gradient(120deg,#ffffff,#eef3f8); border-radius:0 0 16px 16px; box-shadow:0 4px 18px rgba(20,34,47,.06); padding-bottom:14px; margin-bottom:16px; }
+h1{ letter-spacing:.3px; }
+.section-nav{ background:rgba(255,255,255,.72); backdrop-filter:blur(8px); border-radius:0 0 12px 12px; box-shadow:var(--shadow-sm); }
+.section-nav a{ transition:color .15s,border-color .15s; }
+.stats{ box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.6); border-radius:var(--radius); }
+.stat{ transition:background .15s; }
+.stat:hover{ background:#fafbfc; }
+.panel{ box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.6); border-radius:var(--radius); }
+.agent-monitor{ box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.6); border-radius:var(--radius); }
+.agent-state{ transition:background .15s; }
+.agent-state:hover{ background:#fafbfc; }
+.task{ transition:background .12s,box-shadow .15s; }
+.task:hover{ box-shadow:var(--shadow-sm); }
+.task.on{ box-shadow:inset 3px 0 0 var(--accent); }
+.task.on:hover{ box-shadow:inset 3px 0 0 var(--accent),var(--shadow-sm); }
+button{ box-shadow:0 1px 4px rgba(36,95,145,.18); transition:background .12s,border-color .12s,box-shadow .12s,transform .12s; }
+button:hover{ transform:translateY(-1px); box-shadow:0 4px 14px rgba(36,95,145,.28); }
+button:active{ transform:translateY(0); }
+button.ghost{ box-shadow:var(--shadow-sm); }
+button.ghost:hover{ transform:translateY(-1px); }
+button.danger{ box-shadow:var(--shadow-sm); }
+input,select,textarea{ box-shadow:inset 0 1px 2px rgba(32,37,43,.04); transition:border-color .15s,box-shadow .15s; }
+input:focus-visible,select:focus-visible,textarea:focus-visible{ outline:2px solid #5fb3a4; outline-offset:2px; box-shadow:0 0 0 3px rgba(95,179,164,.22); }
+.badge{ box-shadow:var(--shadow-sm); }
+.lamp{ box-shadow:var(--shadow-sm); transition:transform .15s,box-shadow .15s; }
+.lamp:hover{ transform:translateY(-1px); box-shadow:var(--shadow-md); }
+.console{ box-shadow:0 12px 34px rgba(21,34,47,.20); }
+.drop{ box-shadow:var(--shadow-sm); }
+.toast{ box-shadow:0 8px 28px rgba(20,34,47,.30); border-radius:10px; }
+/* ===== 视觉增强结束 ===== */
+
+/* ===== 新增交互组件 ===== */
+.panel h2{display:flex;align-items:center;justify-content:space-between}
+.tpl-btn{font-size:11px!important;padding:3px 10px!important;font-weight:500!important}
+.templates{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.templates .tpl-label{font-size:12px;color:var(--muted);margin-right:2px}
+.tpl{cursor:pointer;background:#fff;border:1px solid var(--border);border-radius:999px;
+  padding:4px 12px;font-size:12px;color:var(--accent-dark);transition:background .12s,border-color .12s,box-shadow .12s,transform .12s}
+.tpl:hover{background:var(--soft);border-color:var(--accent);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+.tpl:active{transform:translateY(0)}
+.amodal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+  background:rgba(20,34,47,.42);padding:20px}
+.amodal[hidden]{display:none}
+.amodal-box{position:relative;width:min(460px,100%);background:#fff;border-radius:14px;
+  box-shadow:0 24px 60px rgba(20,34,47,.30);padding:22px 24px}
+.amodal-close{position:absolute;top:10px;right:14px;border:0;background:transparent;
+  font-size:23px;line-height:1;color:#79847f;cursor:pointer}
+.amodal-close:hover{color:var(--accent-dark)}
+.amodal-box h3{margin:0 0 4px;font-size:18px;font-weight:650}
+.amodal-eyebrow{display:inline-block;margin-bottom:8px;padding:2px 9px;border-radius:999px;
+  font-size:11px;font-weight:500;color:var(--accent-dark);background:var(--soft)}
+.amodal-row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;
+  border-top:1px solid var(--border);font-size:13px}
+.amodal-row:first-of-type{border-top:0}
+.amodal-row b{font-weight:600;color:var(--text);min-width:0}
+.amodal-row span{color:var(--muted);text-align:right;overflow-wrap:anywhere}
+
+@media(prefers-reduced-motion:reduce){body::after{animation:none}}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   .stat:nth-child(4){border-right:0}.stat:nth-child(n+5){border-top:1px solid var(--border)}
   .agent-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.agent-state:nth-child(3){border-right:0}
@@ -273,6 +371,42 @@ label.chk input{width:auto}
   .console .chead{flex-wrap:wrap;gap:7px}.console .ccontrols{width:100%;justify-content:space-between}
   .console .cbody{height:260px}.console .cin{padding:9px}.console .cin textarea{max-height:30vh}
   #list{max-height:none}.body{padding:12px;max-height:none}.panel{min-width:0}}
+/* ===== 视觉修整：对齐与边框（2026-10） ===== */
+[hidden]{display:none !important}
+
+/* 圆角统一 + 柔化边框 */
+.stats,.agent-monitor,.panel,.dpanel{border-color:#e8ecf0;border-radius:11px;
+  box-shadow:0 1px 2px rgba(20,40,60,.04),0 8px 22px rgba(20,40,60,.04)}
+.stat{border-right:1px solid #f0f3f6;padding:12px 14px}
+.stat .n{font-size:22px;line-height:1.15}
+.stat .l{margin-top:3px;letter-spacing:.2px}
+.agent-state{border-right:1px solid #f0f3f6}
+
+/* 任务卡片更规整 */
+.task{padding:13px 16px}
+.task .meta{line-height:1.6}
+.badge{display:inline-flex;align-items:center;line-height:1.5}
+
+/* 新增「方案博弈」阶段的状态徽标配色（此前无样式，会透明） */
+.b-DELIBERATING{background:#e0f2fe;color:#0369a1}
+.b-DELIB_PAUSED{background:#fff7ed;color:#c2410c}
+.b-DELIB_READY{background:#d1fae5;color:var(--pass)}
+
+/* 按钮：高度与圆角统一，文字居中不歪 */
+button{border-radius:8px;min-height:32px;display:inline-flex;align-items:center;
+  justify-content:center;gap:4px;line-height:1.2}
+.amodal-close{min-height:0;display:inline-flex}
+
+/* 详情头部基线 */
+.dh .t{line-height:1.4}
+.dh .m{line-height:1.75}
+.acts{align-items:center}
+
+/* 空状态更柔和 */
+.empty{border:1px solid #eef1f4;border-radius:10px;background:#fbfcfd}
+
+/* 博弈面板内距 */
+.dph{padding:11px 14px}
 </style>
 </head>
 <body>
@@ -280,6 +414,7 @@ label.chk input{width:auto}
 
 <header>
   <div>
+    <span class="kicker">Multi-Agent Pipeline</span>
     <h1>AI 双 AI 流水线</h1>
     <div class="sub">多 Agent 分工 · TRAE / WorkBuddy 文件接力 · 独立验收 · 失败自动打回</div>
   </div>
@@ -342,15 +477,37 @@ label.chk input{width:auto}
     </select>
     <label class="chk" title="Codex 先评任务难度并推荐模型，给你 3 分钟确认，超时自动采用">
       <input type="checkbox" id="route" checked>难度路由</label>
+    <label class="chk" title="先让产品/架构/风险/实现四个 AI 讨论可行性并产出 A/B/C 三套方案，你挑选后再开工">
+      <input type="checkbox" id="delib" checked>先方案博弈</label>
     <button onclick="create()">创建任务</button>
     <button class="ghost" onclick="advanceAll()">推进一轮</button>
     <label class="chk"><input type="checkbox" id="auto" checked>自动刷新</label>
+  </div>
+  <div class="templates">
+    <span class="tpl-label">常用模板</span>
+    <button type="button" class="tpl" data-req="为下面的需求编写一份清晰的中文产品需求说明（PRD），含背景、目标与验收标准">写 PRD</button>
+    <button type="button" class="tpl" data-req="为以下代码生成单元测试，覆盖正常路径与边界情况，并给出运行方式">生成单测</button>
+    <button type="button" class="tpl" data-req="把下面这段内容翻译为地道英文，并做通顺润色">翻译润色</button>
+    <button type="button" class="tpl" data-req="定位并修复以下 bug，给出最小改动方案与原因说明">修复 bug</button>
   </div>
 </section>
 
 <div class="main" id="taskWorkspace">
   <div class="panel">
-    <h2>任务队列</h2>
+    <h2>任务队列 <button class="ghost tpl-btn" id="exportTasks" type="button">导出清单</button></h2>
+    <div class="task-filter">
+      <select id="tf" onchange="renderTaskList()">
+        <option value="all">全部状态</option>
+        <option value="active">进行中</option>
+        <option value="review">待验收</option>
+        <option value="pass">已通过</option>
+        <option value="fail">未通过</option>
+        <option value="wait">等待中</option>
+        <option value="giveup">已终止</option>
+      </select>
+      <input type="text" id="ts" placeholder="搜索需求或任务ID" oninput="renderTaskList()">
+      <span class="task-filter-count" id="tfCount"></span>
+    </div>
     <div id="list"></div>
   </div>
 
@@ -390,6 +547,13 @@ label.chk input{width:auto}
 
 </div>
 <div class="toast" id="toast"></div>
+
+<div class="amodal" id="agentModal" hidden>
+  <div class="amodal-box">
+    <button class="amodal-close" type="button" onclick="closeAgentModal()">×</button>
+    <div id="agentModalBody"></div>
+  </div>
+</div>
 
 <script>
 let CUR = null, TAB = 'timeline', TIMER = null;
@@ -514,7 +678,7 @@ async function dropFile(){
 }
 
 // 拖拽到整页放下即可投递
-window.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('dropZone').style.borderColor = '#245f91'; });
+window.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('dropZone').style.borderColor = '#0f5a4d'; });
 window.addEventListener('dragleave', e => { if(e.relatedTarget===null) document.getElementById('dropZone').style.borderColor=''; });
 window.addEventListener('drop', e => {
   e.preventDefault();
@@ -525,9 +689,38 @@ window.addEventListener('drop', e => {
 
 async function loadTasks(){
   const d = await API.get('/api/tasks');
+  window.__tasks = d.tasks||[];
+  renderTaskList();
+  if(CUR) renderDetail();
+}
+
+function taskCat(t){
+  if(t.status==='PASS') return 'pass';
+  if(t.status==='FAIL') return 'fail';
+  if(t.status==='GIVE_UP') return 'giveup';
+  if(t.on_hold) return 'wait';
+  if(t.status==='DONE') return 'review';
+  return 'active';
+}
+
+function taskMatch(t){
+  const f = (document.getElementById('tf')||{}).value || 'all';
+  if(f!=='all' && taskCat(t)!==f) return false;
+  const q = ((document.getElementById('ts')||{}).value||'').trim().toLowerCase();
+  if(q && !((t.requirement||'').toLowerCase().includes(q) || String(t.id).toLowerCase().includes(q))) return false;
+  return true;
+}
+
+function renderTaskList(){
   const el = document.getElementById('list');
-  const ts = d.tasks||[];
-  if(!ts.length){ el.innerHTML = `<div class="empty">还没有任务 —— 上方输入需求创建第一个</div>`; return; }
+  const all = window.__tasks||[];
+  const ts = all.filter(taskMatch);
+  const cnt = document.getElementById('tfCount');
+  if(cnt) cnt.textContent = ts.length!==all.length ? `${ts.length}/${all.length}` : `${all.length} 个`;
+  if(!ts.length){
+    el.innerHTML = `<div class="empty">${ all.length ? '没有符合筛选条件的任务' : '还没有任务 —— 上方输入需求创建第一个' }</div>`;
+    return;
+  }
   el.innerHTML = ts.map(t=>`
     <div class="task ${CUR===t.id?'on':''}" onclick="pick('${t.id}')">
       <div class="top">
@@ -538,7 +731,6 @@ async function loadTasks(){
       <div class="req">${esc(t.requirement)}</div>
       <div class="meta">第 ${t.round||1}/${t.max_rounds||3} 轮 · 最佳评分 ${t.best_score==null?'—':t.best_score+'/100'} · 出题 ${t.optimizer||'auto'} · 执行 ${t.executor||'auto'} · 阅卷 ${t.reviewer||'auto'}</div>
     </div>`).join('');
-  if(CUR) renderDetail();
 }
 
 async function pick(id){ CUR=id; TAB='summary'; loadTasks(); }
@@ -568,6 +760,7 @@ async function renderDetail(){
         ${t.giveup_reason?' · <b style="color:var(--fail)">'+esc(t.giveup_reason)+'</b>':''}</div>
       <div class="acts">
         <button onclick="adv('${t.id}')">推进一步</button>
+        ${(t.status==='NEW' && !t.deliberation)?`<button class="ghost" onclick="delibStart('${t.id}')">🔎 先方案博弈</button>`:''}
         ${(f.outputs&&f.outputs.length)?`
           <button class="ghost" onclick="openOut('${t.id}')">📂 打开产出文件夹</button>
           ${firstHtml(f.outputs)?`<button class="ghost" onclick="previewHtml('${t.id}')">🌐 预览网页产出</button>`:''}`:''}
@@ -585,6 +778,7 @@ async function renderDetail(){
       </div>
     </div>
     ${gateHtml(t)}
+    ${delibHtml(t)}
     <div class="tabs">${tabs.map(([k,n])=>
       `<div class="tab ${TAB===k?'on':''}" onclick="tab('${k}')">${n}</div>`).join('')}</div>
     <div class="body" id="body">加载中…</div>`;
@@ -662,6 +856,7 @@ async function loadAgentActivity(){
   try{
     const data = await API.get('/api/agents/activity');
     const rows = data.roles||[];
+    window.__activity = rows;
     grid.innerHTML = rows.map(a=>{
       const state = ACTIVITY_LABEL[a.status]||'状态未知';
       const model = a.model ? ` · ${esc(a.model)}` : '';
@@ -669,7 +864,7 @@ async function loadAgentActivity(){
       const phase = a.phase ? ` · ${esc(EV_PHASE[a.phase]||a.phase)}` : '';
       const parallel = a.active_count>1 ? ` · ${a.active_count} 个并行调用` : '';
       const elapsed = a.status==='running' && a.started_epoch ? ` · 已运行 ${activityElapsed(a.started_epoch)}` : '';
-      return `<article class="agent-state" data-state="${esc(a.status)}">
+      return `<article class="agent-state" data-state="${esc(a.status)}" data-role="${esc(a.role)}" style="cursor:pointer">
         <div class="agent-state-top"><strong>${esc(a.role_label)}</strong><span class="agent-pill">${state}</span></div>
         <div class="agent-backend">${esc(a.backend_label||a.backend)}${model}</div>
         <div class="agent-detail">${esc(a.detail||'')}</div>
@@ -681,6 +876,31 @@ async function loadAgentActivity(){
     updated.textContent = '状态服务暂不可用';
   }
 }
+
+// ---- Agent 角色详情抽屉 ----
+function openAgentModal(role){
+  const a = (window.__activity||[]).find(r => r.role === role);
+  if(!a) return;
+  const cfg = (window.__agents && window.__agents.backends && window.__agents.backends[a.backend]) || {};
+  const state = ACTIVITY_LABEL[a.status] || '状态未知';
+  document.getElementById('agentModalBody').innerHTML = `
+    <div class="amodal-eyebrow">${state}</div>
+    <h3>${esc(a.role_label)}</h3>
+    <div class="amodal-row"><b>后端</b><span>${esc(a.backend_label||a.backend)}</span></div>
+    <div class="amodal-row"><b>模型</b><span>${esc(a.model||cfg.model||'—')}</span></div>
+    <div class="amodal-row"><b>累计调用</b><span>${Number(a.count)||0} 次</span></div>
+    <div class="amodal-row"><b>并行调用</b><span>${a.active_count>1 ? a.active_count+' 个' : '无'}</span></div>
+    <div class="amodal-row"><b>关联任务</b><span>${a.task_id ? esc(a.task_id) : '无'}</span></div>
+    <div class="amodal-row"><b>最后更新</b><span>${esc(a.updated_at||'—')}</span></div>
+    <div class="amodal-row"><b>说明</b><span>${esc(a.detail||'—')}</span></div>`;
+  document.getElementById('agentModal').hidden = false;
+}
+function closeAgentModal(){ document.getElementById('agentModal').hidden = true; }
+document.getElementById('agentActivityGrid').addEventListener('click', e => {
+  const el = e.target.closest('.agent-state');
+  if(el) openAgentModal(el.dataset.role);
+});
+document.getElementById('agentModal').addEventListener('click', e => { if(e.target.id === 'agentModal') closeAgentModal(); });
 
 async function loadAgents(){
   const a = await API.get('/api/agents');
@@ -836,7 +1056,9 @@ async function create(){
   if(!r){ toast('先写点需求'); return; }
   const mode = document.getElementById('mode').value;
   const route = document.getElementById('route').checked;
-  const res = await API.post('/api/task', {requirement:r, mode:mode||undefined, model_route:route});
+  const delibEl = document.getElementById('delib');
+  const deliberate = delibEl ? delibEl.checked : false;
+  const res = await API.post('/api/task', {requirement:r, mode:mode||undefined, model_route:route, deliberate});
   if(res.ok){ document.getElementById('req').value=''; toast('已创建 '+res.id); CUR=res.id; loadAll(); }
   else toast('创建失败：'+(res.error||''));
 }
@@ -882,6 +1104,71 @@ async function confirmModel(tid){
   const res = await API.post('/api/task/'+tid+'/model', {model});
   if(res.ok){ toast('已确认：'+res.msg); loadAll(); }
   else toast('确认失败：'+(res.error||''));
+}
+
+// ---- 多 AI 协作 · 方案博弈面板 ----
+function delibHtml(t){
+  const d = t.deliberation;
+  if(!d) return '';
+  const st = t.status||'';
+  const phaseTxt = ({coop:'多角色论证中',debate:'红队压测中',ready:'方案就绪'})[d.phase] || '';
+  const roleEntries = Object.entries(d.roles||{});
+  const roles = roleEntries.map(([n,v])=>`
+    <div class="drole">
+      <div class="dn">${esc(n)}<span class="dm">${esc(v.model||'')}</span></div>
+      <div class="dt">${esc(v.text||'')}</div>
+    </div>`).join('');
+  const cands = (d.candidates||[]).map(c=>`
+    <div class="dcand ${c.key===d.recommended?'rec':''}">
+      <div class="dh2">方案${esc(c.key)}：${esc(c.title||'')}${c.key===d.recommended?' <span class="recmk">推荐</span>':''}</div>
+      <div class="dt">${esc(c.text||'')}</div>
+      ${d.phase==='ready'?`<div class="drow"><button onclick="adoptPlan('${t.id}','${esc(c.key)}')">采纳方案${esc(c.key)}并开工</button></div>`:''}
+    </div>`).join('');
+  const debate = (d.debate||[]).map(b=>`
+    <div class="ddebate"><div class="dsh2">红队压测 · 第 ${b.round} 轮</div><div class="dt">${esc(b.text||'')}</div></div>`).join('');
+  const synthBlock = (!cands && d.synthesis) ? `
+    <div class="dcand"><div class="dh2">汇总方案</div><div class="dt">${esc(d.synthesis)}</div>
+    ${d.phase==='ready'?`<div class="drow"><button onclick="adoptPlan('${t.id}','')">采纳该方案并开工</button></div>`:''}
+    </div>` : '';
+  let state, ctrl='';
+  if(st==='DELIBERATING'){ state='进行中'; ctrl=`<button class="danger" onclick="delibHalt('${t.id}')">⏸ 叫停</button>`; }
+  else if(st==='DELIB_PAUSED'){ state='已暂停'; ctrl=`<button onclick="delibResume('${t.id}')">▶ 继续</button>`; }
+  else if(st==='DELIB_READY'){ state='已就绪'; ctrl=`<span class="dok">↓ 选一套方案采纳即可开工</span>`; }
+  else { state = st; }
+  return `
+  <div class="dpanel">
+    <div class="dph">
+      <b>多 AI 协作 · 方案博弈</b>
+      <span class="dstag">${state} · ${roleEntries.length}/4 角色${phaseTxt?' · '+phaseTxt:''}</span>
+      <span class="dctrls">${ctrl}</span>
+    </div>
+    ${d.error?`<div class="derr">⚠ ${esc(d.error)}</div>`:''}
+    ${roles?`<div class="dsec"><div class="dsh">各角色意见</div><div class="droles">${roles}</div></div>`:''}
+    ${(cands||synthBlock)?`<div class="dsec"><div class="dsh">候选方案</div>${cands}${synthBlock}</div>`:''}
+    ${debate?`<div class="dsec"><div class="dsh">红队压测</div>${debate}</div>`:''}
+  </div>`;
+}
+
+async function delibStart(id){
+  const r = await API.post('/api/task/'+id+'/deliberate', {});
+  toast(r.ok ? (r.msg||'已启动') : ('失败：'+(r.error||'')));
+  loadAll();
+}
+async function delibHalt(id){
+  const r = await API.post('/api/task/'+id+'/halt', {});
+  toast(r.ok ? '已叫停（保留已产出，可继续）' : ('失败：'+(r.error||'')));
+  loadAll();
+}
+async function delibResume(id){
+  const r = await API.post('/api/task/'+id+'/resume', {});
+  toast(r.ok ? '已继续' : ('失败：'+(r.error||'')));
+  loadAll();
+}
+async function adoptPlan(id, key){
+  if(!confirm('采纳方案 '+key+' 并开始建造？')) return;
+  const r = await API.post('/api/task/'+id+'/adopt', {key:key});
+  toast(r.ok ? (r.msg||'已采纳') : ('失败：'+(r.error||'')));
+  loadAll();
 }
 
 async function reroute(id){
@@ -1005,6 +1292,35 @@ function handleChatKey(event){
     chatSend();
   }
 }
+
+// ---- 任务模板：点击填充需求输入框 ----
+document.querySelectorAll('.tpl').forEach(btn => btn.addEventListener('click', () => {
+  const req = document.getElementById('req');
+  req.value = btn.dataset.req;
+  req.focus();
+}));
+
+// ---- 任务清单导出 ----
+function exportTasks(){
+  const ts = window.__tasks || [];
+  if(!ts.length){ toast('暂无任务可导出'); return; }
+  const rows = [['任务ID','状态','需求','轮次','调用次数','最佳评分','创建时间','已交','应交','文件数']];
+  ts.forEach(t => {
+    rows.push([
+      t.id, t.stage_cn||t.status, (t.requirement||'').replace(/\n/g,' '),
+      t.round||1, t.calls||0, t.best_score==null?'':t.best_score, t.created||'',
+      (t.counts&&t.counts.submitted)||0, (t.counts&&t.counts.expected)||0, (t.counts&&t.counts.files)||0
+    ]);
+  });
+  const csv = rows.map(r => r.map(v => '"'+String(v).replaceAll('"','""')+'"').join(',')).join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = '任务清单.csv';
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+document.getElementById('exportTasks').addEventListener('click', exportTasks);
 
 connectSSE();
 </script>

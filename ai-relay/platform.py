@@ -79,6 +79,9 @@ STAGE_LABEL = {
     orch.WAITING_CODEX: "等待 Codex",
     orch.AWAIT_MODEL_CONFIRM: "待确认模型",
     orch.ASSESSED: "已评估",
+    orch.DELIBERATING: "方案博弈中",
+    orch.DELIB_PAUSED: "博弈已暂停",
+    orch.DELIB_READY: "待选方案",
 }
 
 
@@ -376,10 +379,20 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def _html(self):
         data = HTML_FILE.read_bytes() if HTML_FILE.exists() else b"<h1>platform.html missing</h1>"
@@ -713,6 +726,7 @@ class Handler(BaseHTTPRequestHandler):
             preset = dict(orch.MODE_PRESETS.get(payload.get("mode"), {}))
             if payload.get("on_unavailable"):
                 preset["on_unavailable"] = payload["on_unavailable"]
+            deliberate = bool(payload.get("deliberate"))
 
             with orch.FileLock(orch.LOCK_FILE):
                 st = orch.load_state()
@@ -728,15 +742,103 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 if "on_unavailable" in preset:
                     task["on_unavailable"] = preset["on_unavailable"]
+                if deliberate:
+                    task["status"] = orch.DELIBERATING
+                    orch.init_deliberation(task)
                 st["tasks"][tid] = task
                 orch.save_state(st)
-            orch.log(f"平台创建任务 {tid}", tid)
-            return self._json({"ok": True, "id": tid})
+            orch.log(f"平台创建任务 {tid}" + ("（先方案博弈）" if deliberate else ""), tid)
+            if deliberate:
+                threading.Thread(target=self._delib_bg, args=(tid,), daemon=True).start()
+            return self._json({"ok": True, "id": tid, "deliberate": deliberate})
 
         if path.startswith("/api/task/") and path.endswith("/advance"):
             tid = path[len("/api/task/"):-len("/advance")]
             threading.Thread(target=self._advance_bg, args=(tid,), daemon=True).start()
             return self._json({"ok": True, "msg": "已在后台推进"})
+
+        # ---- 多 AI 协作 · 方案博弈：开始 / 叫停 / 继续 / 采纳 ----
+        if path.startswith("/api/task/") and path.endswith("/deliberate"):
+            tid = path[len("/api/task/"):-len("/deliberate")]
+            with orch.FileLock(orch.LOCK_FILE):
+                st = orch.load_state()
+                t = st.get("tasks", {}).get(tid)
+                if not t:
+                    return self._json({"ok": False, "error": "任务不存在"})
+                if t.get("status") in (orch.PASS, orch.GIVE_UP):
+                    return self._json({"ok": False, "error": "任务已结束，无法再博弈"})
+                if not t.get("deliberation"):
+                    orch.init_deliberation(t)
+                t["hold"] = False
+                t["status"] = orch.DELIBERATING
+                t["updated"] = orch.now()
+                t.setdefault("history", []).append(
+                    {"t": orch.now(), "from": "manual", "to": orch.DELIBERATING, "action": "deliberate"})
+                orch.save_state(st)
+            threading.Thread(target=self._delib_bg, args=(tid,), daemon=True).start()
+            return self._json({"ok": True, "msg": "多 AI 协作已启动"})
+
+        if path.startswith("/api/task/") and path.endswith("/halt"):
+            tid = path[len("/api/task/"):-len("/halt")]
+            with orch.FileLock(orch.LOCK_FILE):
+                st = orch.load_state()
+                t = st.get("tasks", {}).get(tid)
+                if not t:
+                    return self._json({"ok": False, "error": "任务不存在"})
+                t["hold"] = True
+                if t.get("status") == orch.DELIBERATING:
+                    t["status"] = orch.DELIB_PAUSED
+                t["updated"] = orch.now()
+                orch.save_state(st)
+            orch.log("人工叫停方案博弈", tid)
+            return self._json({"ok": True, "status": orch.DELIB_PAUSED})
+
+        if path.startswith("/api/task/") and path.endswith("/resume"):
+            tid = path[len("/api/task/"):-len("/resume")]
+            with orch.FileLock(orch.LOCK_FILE):
+                st = orch.load_state()
+                t = st.get("tasks", {}).get(tid)
+                if not t:
+                    return self._json({"ok": False, "error": "任务不存在"})
+                t["hold"] = False
+                t["status"] = orch.DELIBERATING
+                t["updated"] = orch.now()
+                orch.save_state(st)
+            threading.Thread(target=self._delib_bg, args=(tid,), daemon=True).start()
+            return self._json({"ok": True, "msg": "已继续博弈"})
+
+        if path.startswith("/api/task/") and path.endswith("/adopt"):
+            tid = path[len("/api/task/"):-len("/adopt")]
+            key = str(payload.get("key") or "").strip().upper()
+            with orch.FileLock(orch.LOCK_FILE):
+                st = orch.load_state()
+                t = st.get("tasks", {}).get(tid)
+                if not t:
+                    return self._json({"ok": False, "error": "任务不存在"})
+                d = t.get("deliberation") or {}
+                cands = d.get("candidates") or []
+                chosen = next((c for c in cands if c.get("key") == key), None)
+                if not chosen and d.get("synthesis"):
+                    chosen = {"key": key or "自定义", "text": d["synthesis"]}
+                if not chosen:
+                    return self._json({"ok": False, "error": "还没有可用方案，请先等博弈产出"})
+                t["requirement"] = (t.get("requirement", "") +
+                                    "\n\n【已选用的设计方案】\n" + chosen["text"])
+                d["adopted"] = chosen.get("key", key)
+                t["deliberation"] = d
+                t["status"] = orch.NEW
+                t["round"] = 1
+                t["calls"] = 0
+                t["model_route"] = False
+                t["model_locked"] = True
+                t.pop("hold", None)
+                t["updated"] = orch.now()
+                t.setdefault("history", []).append(
+                    {"t": orch.now(), "from": "manual", "to": orch.NEW, "action": f"adopt:{chosen.get('key','')}"})
+                orch.save_state(st)
+            orch.log(f"采纳方案 {chosen.get('key','')}，进入建造流水线", tid)
+            threading.Thread(target=self._advance_bg, args=(tid,), daemon=True).start()
+            return self._json({"ok": True, "msg": f"已采纳方案 {chosen.get('key','')}，开始建造"})
 
         # ---- 人工确认难度路由的选用模型 ----
         if path.startswith("/api/task/") and path.endswith("/model"):
@@ -809,6 +911,47 @@ class Handler(BaseHTTPRequestHandler):
             orch.log(f"跳过推进：{e}", tid)
         except Exception as e:
             orch.log(f"推进出错：{e}", tid)
+
+    def _delib_bg(self, tid: str):
+        """方案博弈后台线程：逐角色/汇总/红队推进；模型调用在锁外，写完再上锁。
+
+        每一步都重新读状态并检查 hold，用户叫停后立即停止（保留已产出）。
+        """
+        while True:
+            with orch.FileLock(orch.LOCK_FILE):
+                st = orch.load_state()
+                t = st.get("tasks", {}).get(tid)
+                if not t or t.get("status") != orch.DELIBERATING or t.get("hold"):
+                    return
+                step = orch.next_delib_step(t)
+                if step.get("kind") == "done":
+                    t["status"] = orch.DELIB_READY
+                    t["updated"] = orch.now()
+                    orch.save_state(st)
+                    orch.log("博弈产出就绪，等待采纳方案", tid)
+                    return
+            # —— 锁外做模型调用，避免长时间占锁 ——
+            ok, text = orch.call_model(step["messages"], step.get("model"))
+            with orch.FileLock(orch.LOCK_FILE):
+                st = orch.load_state()
+                t = st.get("tasks", {}).get(tid)
+                if not t:
+                    return
+                d = t.setdefault("deliberation", {})
+                if not ok:
+                    d["error"] = text
+                    t["status"] = orch.DELIB_PAUSED
+                    t["updated"] = orch.now()
+                    orch.save_state(st)
+                    orch.log(f"博弈调用失败：{text[:120]}", tid)
+                    return
+                orch.apply_delib_result(t, step, text)
+                t["updated"] = orch.now()
+                if t.get("hold"):
+                    t["status"] = orch.DELIB_PAUSED
+                orch.save_state(st)
+                if t.get("status") == orch.DELIB_PAUSED:
+                    return
 
 
 def main():

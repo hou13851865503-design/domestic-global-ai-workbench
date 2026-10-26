@@ -114,6 +114,31 @@ ASSESSED = "ASSESSED"
 
 MODEL_CONFIRM_FILE = PROMPTS / "_MODEL_CONFIRM.md"
 
+# ---- 多 AI 协作 · 方案博弈阶段 ----
+# 流程：DELIBERATING（多角色分头论证 → 汇总出 A/B/C 方案 → 红队压测）
+#       ──人工叫停──> DELIB_PAUSED（保留已产出，可继续）
+#       ──方案就绪──> DELIB_READY（等用户采纳某套方案）
+# 采纳后把方案并入需求、回到 NEW，交给既有「出题→执行→验收」流水线。
+DELIBERATING = "DELIBERATING"
+DELIB_PAUSED = "DELIB_PAUSED"
+DELIB_READY = "DELIB_READY"
+
+DELIB_DEFAULT_MODEL = "gpt-6-sol"
+DELIB_ROLES = [
+    ("产品经理", "gpt-5.6-luna",
+     "你是产品经理。输出：①目标用户与核心场景 ②核心价值一句话 ③MVP 边界（做什么 / 明确不做什么）"
+     "④可量化的成功标准。务必简短，不超过 8 行。"),
+    ("架构师", "gpt-5.6-sol",
+     "你是架构师。输出：①技术选型（语言/库/存储）②模块划分 ③关键数据流（几句话）④最难的 1 个技术点。"
+     "务必简短，不超过 8 行。"),
+    ("风险官", "gpt-6-sol",
+     "你是风险与合规官。输出：①合规/隐私风险 ②最可能失败的模式 2 条 ③每条一句缓解措施"
+     "④整体可行性判断（高/中/低 + 一行理由）。务必简短，不超过 8 行。"),
+    ("实现者", "gpt-5.6-terra",
+     "你是实现者。输出：①落地步骤（3-5 步）②总工作量估算（人日）③环境与依赖 ④第一个可验证里程碑。"
+     "务必简短，不超过 8 行。"),
+]
+
 
 # --------------------------------------------------------------------------
 # Codex 可执行文件自动发现
@@ -804,6 +829,139 @@ def text_stage_call(task: dict, role: str, prompt: str, tag: str,
         role, name, tid, role, actual_model, timeout, call)
     task[f"backend_{role}"] = name
     return ok, msg
+
+
+# --------------------------------------------------------------------------
+# 多 AI 协作 · 方案博弈
+# --------------------------------------------------------------------------
+
+def init_deliberation(task: dict) -> None:
+    """初始化一个任务的方案博弈数据（幂等）。"""
+    task["deliberation"] = {
+        "phase": "coop",      # coop → debate → ready
+        "roles": {},          # {角色名: {model, text}}
+        "synthesis": "",      # 汇总原文
+        "candidates": [],     # [{key, title, text}]
+        "debate": [],         # [{round, text}]
+        "recommended": "",    # "A"/"B"/"C"
+        "adopted": "",        # 用户采纳的方案 key
+        "error": "",
+        "started": now(),
+        "updated": now(),
+    }
+    task["hold"] = False
+
+
+def call_model(messages: list[dict], model: str | None = None,
+               timeout: int = 300) -> tuple[bool, str]:
+    """直连 OpenAI 兼容 /chat/completions（默认走 tokken 后端，即 8787 转发）。
+
+    与 agents.call_openai 的差别：支持 system+user 多消息与指定模型，
+    便于让不同角色用不同模型；显式禁用环境代理（只打 127.0.0.1）。
+    """
+    import agents
+    import urllib.request
+    cfg = agents.load_config()
+    b = cfg.get("backends", {}).get("tokken") or {}
+    base = (b.get("base_url") or "http://127.0.0.1:8787/v1").rstrip("/")
+    key = b.get("api_key") or agents.tokken_token()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def _once(m: str) -> str:
+        body = json.dumps({"model": m, "messages": messages, "stream": False},
+                          ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            base + "/chat/completions", data=body,
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {key}"})
+        with opener.open(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+
+    use = model or b.get("model") or DELIB_DEFAULT_MODEL
+    try:
+        return True, _once(use)
+    except Exception as exc:  # 换备用模型再试一次
+        if use != DELIB_DEFAULT_MODEL:
+            try:
+                return True, _once(DELIB_DEFAULT_MODEL)
+            except Exception as exc2:
+                return False, f"{type(exc2).__name__}: {exc2}"
+        return False, f"{type(exc).__name__}: {exc}"
+
+
+def parse_candidates(text: str) -> list[dict]:
+    """从汇总文本里切出 A/B/C 三套方案（严格按 ### 方案X： 标题）。"""
+    parts = re.split(r'(?m)^###\s*方案\s*([ABC])[：:]\s*(.*)$', text)
+    out: list[dict] = []
+    for i in range(1, len(parts) - 1, 3):
+        key = parts[i].strip()
+        title = parts[i + 1].strip()
+        body = parts[i + 2].strip() if i + 2 < len(parts) else ""
+        out.append({"key": key, "title": title,
+                    "text": f"方案{key}：{title}\n{body}".strip()})
+    return out
+
+
+def next_delib_step(task: dict) -> dict:
+    """返回下一步要做的动作：role / synth / debate / done。"""
+    d = task.setdefault("deliberation", {})
+    d.setdefault("roles", {})
+    req = task.get("requirement", "")
+
+    for name, model, role_prompt in DELIB_ROLES:
+        if name not in d["roles"]:
+            return {"kind": "role", "name": name, "model": model, "messages": [
+                {"role": "system", "content": role_prompt},
+                {"role": "user", "content": f"想法：{req}\n\n请给出你的专业意见。"},
+            ]}
+
+    if not d.get("synthesis"):
+        material = "\n\n".join(
+            f"【{n}】\n{(v.get('text') or '')}" for n, v in d["roles"].items())
+        prompt = (
+            f"用户想法：{req}\n\n以下是四位角色的意见：\n\n{material}\n\n"
+            "请综合，产出 3 套风格不同的候选方案，严格按下面标题格式（每套一段）：\n"
+            "### 方案A：<名称>\n- 一句话定位：\n- 技术要点：\n- 预估工作量：\n- 主要风险：\n"
+            "- 可行性评分（1-10，含一句理由）：\n- 适合场景：\n"
+            "### 方案B：<名称>\n- ...\n### 方案C：<名称>\n- ...\n"
+            "最后单独一行：推荐：方案X —— 一句理由。"
+        )
+        return {"kind": "synth", "model": DELIB_DEFAULT_MODEL, "messages": [
+            {"role": "system", "content": "你是总架构师，擅长在多个方案间做取舍，输出结构化、可比较，不啰嗦。"},
+            {"role": "user", "content": prompt},
+        ]}
+
+    if not d.get("debate"):
+        best = d.get("recommended") or "A"
+        cand_text = next((c["text"] for c in d.get("candidates", []) if c["key"] == best),
+                         d.get("synthesis", ""))
+        return {"kind": "debate", "model": "gpt-5.6-sol", "messages": [
+            {"role": "system", "content": "你是刻薄但专业的红队评审，只讲具体、可验证的问题，输出简短。"},
+            {"role": "user", "content": f"想法：{req}\n\n拟采用的 {best} 方案：\n{cand_text}\n\n"
+                                        "请指出 3 个最致命问题（每条写清后果），并给结论：可开工 / 需返工，"
+                                        "再给 1 条最重要的修改建议。"},
+        ]}
+
+    return {"kind": "done"}
+
+
+def apply_delib_result(task: dict, step: dict, text: str) -> None:
+    """把一次模型输出写回任务。"""
+    d = task.setdefault("deliberation", {})
+    kind = step.get("kind")
+    if kind == "role":
+        d.setdefault("roles", {})[step["name"]] = {"model": step.get("model", ""), "text": text}
+    elif kind == "synth":
+        d["synthesis"] = text
+        d["candidates"] = parse_candidates(text)
+        m = re.search(r'推荐[：:]\s*方案\s*([ABC])', text)
+        d["recommended"] = m.group(1) if m else (d["candidates"][0]["key"] if d["candidates"] else "")
+        d["phase"] = "debate"
+    elif kind == "debate":
+        d.setdefault("debate", []).append({"round": len(d.get("debate", [])) + 1, "text": text})
+        d["phase"] = "ready"
+    d["updated"] = now()
 
 
 # --------------------------------------------------------------------------
