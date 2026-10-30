@@ -102,22 +102,54 @@ def open_trae(workspace: Path) -> tuple[bool, str]:
 
 
 def load_config() -> dict:
+    """读配置：默认值打底，磁盘上的值覆盖。
+
+    backends 必须**逐个后端深合并**：早先的实现是
+    `cfg["backends"].update(saved["backends"])`，只要磁盘上某后端只存了一个字段
+    （比如只存了 model），整个后端条目就会被替换掉，type/label 一起丢失 ——
+    之后 test_backend 就会报"后端类型不支持"，而配置看起来"只是少了个模型名"。
+    """
     cfg = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
     if AGENTS_FILE.exists():
         try:
-            saved = json.loads(AGENTS_FILE.read_text(encoding="utf-8"))
-            for k in ("backends", "roles"):
-                if isinstance(saved.get(k), dict):
-                    cfg[k].update(saved[k])
+            saved = json.loads(AGENTS_FILE.read_text(encoding="utf-8-sig"))
         except Exception:
-            pass
+            saved = {}
+        if isinstance(saved, dict):
+            backends = saved.get("backends")
+            if isinstance(backends, dict):
+                for name, fields in backends.items():
+                    if not isinstance(fields, dict):
+                        continue
+                    base = cfg["backends"].get(name)
+                    if isinstance(base, dict):
+                        base.update({k: v for k, v in fields.items() if v is not None})
+                    else:
+                        cfg["backends"][name] = dict(fields)
+            roles = saved.get("roles")
+            if isinstance(roles, dict):
+                cfg["roles"].update(roles)
+
+    # WorkBuddy 的模型等参数存在独立文件里，读出来并进后端条目，
+    # 这样交接指令、状态面板、连通性自检拿到的都是同一份值。
+    try:
+        import workbuddy_config
+        wb = workbuddy_config.load()[0]
+        if "workbuddy" in cfg["backends"]:
+            cfg["backends"]["workbuddy"]["model"] = wb.get("model", "")
+            cfg["backends"]["workbuddy"]["poll_seconds"] = wb.get("poll_seconds")
+            cfg["backends"]["workbuddy"]["handoff_timeout_minutes"] = wb.get(
+                "handoff_timeout_minutes")
+    except Exception:
+        pass
     return cfg
 
 
 def save_config(cfg: dict) -> None:
-    AGENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    AGENTS_FILE.write_text(
-        json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    """原子写入（临时文件 + fsync + 替换 + .bak），避免写一半被读到。"""
+    import workbuddy_config
+    workbuddy_config.write_json_atomic(
+        AGENTS_FILE, cfg, backup=AGENTS_FILE.with_name("agents.bak.json"))
 
 
 def backend_for_role(role: str, cfg: dict | None = None) -> dict | None:

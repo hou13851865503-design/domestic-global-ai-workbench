@@ -427,7 +427,10 @@ button{border-radius:8px;min-height:32px;display:inline-flex;align-items:center;
   <a href="#taskWorkspace">任务队列</a>
   <a href="#agentMonitor">AI 状态</a>
   <a href="#agentPanel">Agent 配置</a>
+  <a href="#wbPanel">WorkBuddy 配置</a>
   <a href="#dropZone">文件投递</a>
+  <a href="/game">游戏原型</a>
+  <a href="/2048">2048</a>
 </nav>
 
 <div class="banner" id="banner">
@@ -525,6 +528,33 @@ button{border-radius:8px;min-height:32px;display:inline-flex;align-items:center;
       <button onclick="saveAgents()">保存分工</button>
       <span class="hint2">文本阶段可绑定 Codex、DeepSeek 或豆包；执行阶段可选 Codex、WorkBuddy 或 TRAE。TRAE 通过本地文件接力，不调用其私有 API；任务进入等待后可从任务详情打开 TRAE 工作区，完成后写入指定交付文件。</span>
     </div>
+  </div>
+</details>
+
+<details class="drop agents" id="wbPanel">
+  <summary>WorkBuddy 配置 <span class="section-meta">模型与接力</span></summary>
+  <div class="drop-body">
+    <div class="row">
+      <label class="ar">模型
+        <input type="text" id="wb-model" placeholder="留空 = 由 WorkBuddy 自己决定"
+          style="min-width:220px;flex:1">
+      </label>
+      <button onclick="saveWorkbuddy()">保存</button>
+      <button class="ghost" onclick="resetWorkbuddy()">恢复默认</button>
+    </div>
+    <div class="row">
+      <label class="ar">轮询间隔
+        <input type="number" id="wb-poll" min="5" max="3600" style="width:88px"> 秒
+      </label>
+      <label class="ar" style="margin-left:6px">接力超时
+        <input type="number" id="wb-timeout" min="5" max="10080" style="width:88px"> 分钟
+      </label>
+      <label class="ar"><input type="checkbox" id="wb-resume"> 启动时自动恢复未完成任务</label>
+      <button class="ghost" style="padding:4px 9px;font-size:11px" onclick="resumeNow()">立即恢复一次</button>
+    </div>
+    <div class="hint2" id="wbResume"></div>
+    <div class="hint2" id="wbFile"></div>
+    <div class="hint2" id="wbWarn"></div>
   </div>
 </details>
 
@@ -964,6 +994,79 @@ async function testBackendByName(n){
   toast((r.ok ? '✅ ' : '❌ ') + (r.msg || (r.ok?'可用':'不可用')));
 }
 
+// ---------------- WorkBuddy 配置（模型 / 轮询 / 超时 / 自动恢复）----------------
+function fillWorkbuddy(d){
+  if(!d || !d.ok) return;
+  window.__wb = d;
+  const c = d.config || {};
+  document.getElementById('wb-model').value = c.model || '';
+  document.getElementById('wb-poll').value = c.poll_seconds;
+  document.getElementById('wb-timeout').value = c.handoff_timeout_minutes;
+  document.getElementById('wb-resume').checked = !!c.auto_resume;
+
+  const f = d.file || {};
+  document.getElementById('wbFile').textContent = f.exists
+    ? `配置文件：${f.relative_path}（${f.size} 字节，最后修改 ${f.modified}${f.backup?'，有上次备份':''}）`
+    : `配置文件尚未创建，将在首次保存时生成：${f.relative_path}`;
+
+  const warns = d.warnings || [];
+  const box = document.getElementById('wbWarn');
+  box.innerHTML = warns.length
+    ? `<span style="color:var(--warn)">⚠ ${warns.map(esc).join('<br>⚠ ')}</span>`
+    : `<span style="color:var(--muted)">配置正常。改完点「保存」立即生效，下次启动自动读回。</span>`;
+
+  const q = d.queue && d.queue.workbuddy;
+  const last = d.last_resume || {};
+  const parts = [];
+  if(last && last.restored_at){
+    parts.push(`上次恢复 ${last.restored_at}：未完成 ${last.unfinished||0} 个，等 WorkBuddy ${last.waiting_workbuddy||0} 个`
+      + (last.reverted ? `，${last.reverted} 个中断的博弈已回退为可继续` : ''));
+  }
+  if(q) parts.push(q.exists ? `待办队列 ${q.size} 字节，更新于 ${q.modified}`
+                            : '待办队列当前为空（没有等接力的任务）');
+  document.getElementById('wbResume').textContent = parts.join(' · ');
+}
+
+async function loadWorkbuddy(){
+  try{
+    const d = await API.get('/api/workbuddy');
+    fillWorkbuddy(d);
+  }catch(e){ /* 面板拿不到就保持静默，不打断主界面 */ }
+}
+
+async function saveWorkbuddy(){
+  const payload = {
+    model: document.getElementById('wb-model').value,
+    poll_seconds: document.getElementById('wb-poll').value,
+    handoff_timeout_minutes: document.getElementById('wb-timeout').value,
+    auto_resume: document.getElementById('wb-resume').checked
+  };
+  const r = await API.post('/api/workbuddy', payload);
+  if(r.ok){
+    toast('WorkBuddy 配置已保存' + (r.warning ? '（'+r.warning+'）' : ''));
+    loadWorkbuddy();
+  }else{
+    const detail = (r.errors||[]).map(e=>`${e.label}：${e.error}`).join('；');
+    toast('保存失败：' + (detail || r.error || '未知错误'));
+    const box = document.getElementById('wbWarn');
+    box.innerHTML = `<span style="color:var(--fail)">⚠ ${esc(detail || r.error || '保存失败')}</span>`;
+  }
+}
+
+async function resetWorkbuddy(){
+  const r = await API.post('/api/workbuddy/reset', {});
+  toast(r.ok ? '已恢复默认' : '恢复失败：'+(r.error||''));
+  loadWorkbuddy();
+}
+
+async function resumeNow(){
+  const r = await API.post('/api/workbuddy/resume', {});
+  const s = (r && r.resume) || {};
+  toast(s.ok ? `已重建待办：未完成 ${s.unfinished||0} 个，等 WorkBuddy ${s.waiting_workbuddy||0} 个`
+             : '恢复失败：'+(s.error||r.error||''));
+  loadWorkbuddy();
+}
+
 async function loadBody(t){
   const b = document.getElementById('body');
   const f = t.files||{};
@@ -1188,6 +1291,20 @@ document.getElementById('auto').addEventListener('change', e=>{
 
 loadAll();
 loadAgents();
+loadWorkbuddy();
+
+// 导航里的锚点默认只滚动不动 <details>，点「WorkBuddy 配置」会看到一行折叠标题 ——
+// 看起来像没反应。统一在跳转时把目标面板展开。
+function openHashPanel(){
+  const id = (location.hash || '').replace('#','');
+  if(!id) return;
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(el.tagName === 'DETAILS') el.open = true;
+  el.scrollIntoView({block:'start'});
+}
+window.addEventListener('hashchange', openHashPanel);
+openHashPanel();
 TIMER = setInterval(loadAll, 5000);
 setInterval(loadAgentActivity, 2500);
 

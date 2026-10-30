@@ -32,9 +32,12 @@ from urllib.parse import urlparse, parse_qs
 
 import orchestrator as orch
 import agents
+import workbuddy_config
 
 ROOT = orch.ROOT
 HTML_FILE = ROOT / "platform.html"
+GAME_FILE = ROOT / "game.html"
+GAME_2048_FILE = ROOT / "2048.html"
 PROXY_PORT = 8787
 DEFAULT_PORT = 8767
 
@@ -235,6 +238,82 @@ WAITING_ROLE = {
 }
 
 
+def workbuddy_save(payload: dict) -> tuple[int, dict]:
+    """保存 WorkBuddy 配置。返回 (HTTP 状态码, 响应体)。
+
+    抽成函数而不是写在 handler 里，是为了能直接被单测调用 —— 走 HTTP 测一遍
+    既慢又要处理端口占用，覆盖不到"校验失败"这类分支。
+    """
+    try:
+        cfg = workbuddy_config.save(payload if isinstance(payload, dict) else {})
+    except workbuddy_config.ConfigError as exc:
+        orch.log(f"WorkBuddy 配置写入被拒绝：{exc.message}")
+        return 400, exc.as_dict()
+    except Exception as exc:  # 兜底：任何异常都不能让服务 500 掉线
+        return 500, {"ok": False, "error": f"保存失败：{type(exc).__name__}: {exc}"}
+
+    orch.log(f"WorkBuddy 配置已更新：model={cfg.get('model') or '(未指定)'} "
+             f"poll={cfg.get('poll_seconds')}s "
+             f"timeout={cfg.get('handoff_timeout_minutes')}min "
+             f"auto_resume={cfg.get('auto_resume')}")
+    # 改了配置立刻重建待办队列：模型名写进了交接指令，不重建就还是旧值
+    try:
+        with orch.FileLock(orch.LOCK_FILE):
+            orch.refresh_pending(orch.load_state())
+    except Exception as exc:
+        return 200, {"ok": True, "config": cfg,
+                     "warning": f"配置已保存，但待办队列重建失败：{exc}"}
+    return 200, {"ok": True, "config": cfg}
+
+
+def workbuddy_reset() -> tuple[int, dict]:
+    try:
+        cfg = workbuddy_config.reset()
+    except workbuddy_config.ConfigError as exc:
+        return 400, exc.as_dict()
+    orch.log("WorkBuddy 配置已恢复默认")
+    return 200, {"ok": True, "config": cfg}
+
+
+def workbuddy_resume() -> tuple[int, dict]:
+    summary = orch.restore_unfinished()
+    _LAST_RESUME.clear()
+    _LAST_RESUME.update(summary)
+    payload = {"ok": bool(summary.get("ok")), "resume": summary}
+    try:
+        payload["queue"] = orch.pending_queue_info()
+    except Exception as exc:
+        payload["queue"] = {"error": str(exc)}
+    return 200, payload
+
+
+# 最近一次"启动恢复"的结果，供界面显示（进程内缓存，重启即重置）
+_LAST_RESUME: dict = {}
+
+
+def workbuddy_view() -> dict:
+    """WorkBuddy 配置视图：值 + 字段说明 + 文件位置 + 告警 + 恢复状态。
+
+    读失败不抛异常：load() 已经做过降级，这里把告警原样带回界面，
+    让用户看到"用的是默认值"而不是以为自己设的模型生效了。
+    """
+    cfg, warnings = workbuddy_config.ensure_file()
+    try:
+        queue = orch.pending_queue_info()
+    except Exception as exc:
+        queue = {"error": f"{type(exc).__name__}: {exc}"}
+    return {
+        "ok": True,
+        "config": cfg,
+        "fields": workbuddy_config.describe(),
+        "defaults": dict(workbuddy_config.DEFAULTS),
+        "file": workbuddy_config.status(),
+        "warnings": warnings,
+        "queue": queue,
+        "last_resume": _LAST_RESUME,
+    }
+
+
 def agent_activity_view(cfg: dict, state: dict, activity: dict) -> dict:
     """Expose only observable call and handoff state; never infer activity from config."""
     backends = cfg.get("backends", {})
@@ -404,6 +483,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _game(self):
+        data = GAME_FILE.read_bytes() if GAME_FILE.exists() else b"<h1>game.html missing</h1>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _game_2048(self):
+        data = GAME_2048_FILE.read_bytes() if GAME_2048_FILE.exists() else b"<h1>2048.html missing</h1>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     # ---------------- GET
 
     def do_GET(self):
@@ -412,6 +509,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/", "/platform", "/index.html"):
             return self._html()
+
+        if path in ("/game", "/game.html"):
+            return self._game()
+
+        if path in ("/2048", "/2048.html"):
+            return self._game_2048()
 
         if path == "/api/status":
             return self._json({
@@ -589,6 +692,18 @@ class Handler(BaseHTTPRequestHandler):
                     b["api_key"] = (k[:4] + "****") if len(k) > 8 else "****"
             return self._json({"ok": True, **cfg})
 
+        # ---- WorkBuddy 配置（模型 / 轮询 / 超时 / 自动恢复）----
+        if path == "/api/workbuddy":
+            return self._json(workbuddy_view())
+
+        # ---- 未完成任务恢复状态（只读）----
+        if path == "/api/workbuddy/resume":
+            return self._json({
+                "ok": True,
+                "queue": orch.pending_queue_info(),
+                "last_resume": _LAST_RESUME,
+            })
+
         return self._json({"error": "not found"}, 404)
 
     # ---------------- POST
@@ -712,6 +827,21 @@ class Handler(BaseHTTPRequestHandler):
             agents.save_config(cfg)
             orch.log(f"多 Agent 配置已更新：{cfg.get('roles')}")
             return self._json({"ok": True, "roles": cfg["roles"]})
+
+        # ---- 保存 WorkBuddy 配置（模型 / 轮询 / 超时 / 自动恢复）----
+        if path == "/api/workbuddy":
+            status, body = workbuddy_save(payload)
+            return self._json(body, status)
+
+        # ---- 恢复默认 ----
+        if path == "/api/workbuddy/reset":
+            status, body = workbuddy_reset()
+            return self._json(body, status)
+
+        # ---- 手动触发"恢复未完成任务"----
+        if path == "/api/workbuddy/resume":
+            status, body = workbuddy_resume()
+            return self._json(body, status)
 
         # ---- 后端连通性自检 ----
         if path == "/api/agents/test":
@@ -962,6 +1092,25 @@ def main():
 
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"ai-relay 平台已启动： http://127.0.0.1:{args.port}/")
+
+    # 启动即恢复现场：state.json 只是记录，_PENDING_FOR_WORKBUDDY.md 才是
+    # WorkBuddy 会话真正读的东西 —— 队列文件丢了任务就"看着还在、实际没人做"。
+    try:
+        if workbuddy_config.get("auto_resume"):
+            summary = orch.restore_unfinished()
+            _LAST_RESUME.clear()
+            _LAST_RESUME.update(summary)
+            if summary.get("ok"):
+                print(f"  恢复：共 {summary['total']} 个任务，"
+                      f"{summary['unfinished']} 个未完成，"
+                      f"其中 {summary['waiting_workbuddy']} 个等 WorkBuddy 接力")
+            else:
+                print(f"  恢复失败（不影响服务）：{summary.get('error')}")
+        else:
+            print("  启动恢复已关闭（可在「WorkBuddy 配置」里打开）")
+    except Exception as exc:
+        print(f"  恢复失败（不影响服务）：{exc}")
+
     print(f"  Codex: {orch.CODEX_BIN or '未找到'}")
     print(f"  base_url: {orch.get_codex_base_url() or '(未配置)'}")
     print(f"  代理(8787): {'运行中' if port_open(PROXY_PORT) else '未运行 —— Codex 可能连不上'}")

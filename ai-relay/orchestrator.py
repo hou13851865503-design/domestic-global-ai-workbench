@@ -1876,6 +1876,22 @@ def handoff_file(agent: str, tid: str) -> Path:
     return PROMPTS / f"_HANDOFF_{agent.upper()}_{tid}.md"
 
 
+def workbuddy_model_line() -> str:
+    """交接指令里注明这次该用哪个模型。
+
+    WorkBuddy 是外部会话，编排器看不到它内部用的是什么模型；
+    把用户设定的模型写进指令，至少让「谁跑的、按什么模型跑的」可复核。
+    """
+    try:
+        import workbuddy_config
+        model = (workbuddy_config.get("model") or "").strip()
+    except Exception:
+        model = ""
+    if model:
+        return f"> 使用模型：`{model}`（可在平台「WorkBuddy 配置」里修改）"
+    return "> 使用模型：未指定（由 WorkBuddy 自行选择；可在平台「WorkBuddy 配置」里固定）"
+
+
 def _write_handoff(task: dict, state_name: str, agent: str) -> Path:
     tid = task["id"]
     _, title, path_fn = STAGE_SPEC[state_name]
@@ -1885,6 +1901,10 @@ def _write_handoff(task: dict, state_name: str, agent: str) -> Path:
     lines = [
         f"# {agent.upper()} 接力任务：{tid}", "",
         f"> 当前阶段：{title}。本文件由编排器生成；请勿推进其他阶段。", "",
+    ]
+    if agent == "workbuddy":
+        lines += [workbuddy_model_line(), ""]
+    lines += [
         "## 原始需求", "", task.get("requirement", ""), "",
         "## 本阶段操作", "",
     ]
@@ -1958,6 +1978,78 @@ def refresh_pending(state: dict) -> None:
     """Refresh separate handoff queues for WorkBuddy and TRAE."""
     _refresh_agent_pending(state, "workbuddy", PENDING_FILE)
     _refresh_agent_pending(state, "trae", PENDING_TRAE_FILE)
+
+
+# 终态：不会再有下一步，恢复时不必理会
+TERMINAL_STATES = (PASS, GIVE_UP, "BLOCKED")
+
+
+def restore_unfinished() -> dict:
+    """重启后恢复现场：重新扫描未完成任务，重建两份待办队列。
+
+    为什么需要它：state.json 只是"记录了什么"，`_PENDING_FOR_WORKBUDDY.md`
+    和每个 `_HANDOFF_*.md` 才是 WorkBuddy 会话真正读的东西。这两个文件随时可能
+    因为手动清理、切分支、换机器而消失；没有这一步，任务在状态里"还在等"，
+    但 WorkBuddy 那边看不到任何待办 —— 现场就丢了。
+
+    另外把"进程被杀时正在跑"的 DELIBERATING 回退成 DELIB_PAUSED：
+    推进它的是平台里的一条后台线程，进程没了线程也没了；状态留在 DELIBERATING
+    会让界面永远显示"进行中"，而用户点不了也等不到。回退后可以点继续恢复。
+
+    返回摘要给界面显示（不抛异常，出问题也如实写进 summary）。
+    """
+    summary: dict = {"ok": True, "restored_at": now(), "total": 0, "unfinished": 0,
+                     "waiting_workbuddy": 0, "by_status": {}, "reverted": 0,
+                     "error": None}
+    try:
+        with FileLock(LOCK_FILE):
+            state = load_state()
+            tasks = state.get("tasks", {}) if isinstance(state, dict) else {}
+            summary["total"] = len(tasks)
+            unfinished = [t for t in tasks.values()
+                          if isinstance(t, dict) and t.get("status") not in TERMINAL_STATES]
+            summary["unfinished"] = len(unfinished)
+            reverted = 0
+            for task in unfinished:
+                status = task.get("status") or "UNKNOWN"
+                if status == DELIBERATING:
+                    task["status"] = DELIB_PAUSED
+                    task["updated"] = now()
+                    task["resume_note"] = "服务重启，多角色博弈已暂停，可点「继续」从断点恢复"
+                    reverted += 1
+                    status = DELIB_PAUSED
+                summary["by_status"][status] = summary["by_status"].get(status, 0) + 1
+                if (status in WAITING_STATES
+                        and task.get("waiting_agent", "workbuddy") == "workbuddy"):
+                    summary["waiting_workbuddy"] += 1
+            summary["reverted"] = reverted
+            if reverted:
+                save_state(state)
+                log(f"启动恢复：{reverted} 个中断的博弈已回退为可继续状态")
+            refresh_pending(state)
+            refresh_model_confirm(state)
+            if summary["unfinished"]:
+                log(f"启动恢复：{summary['unfinished']} 个未完成任务，"
+                    f"其中 {summary['waiting_workbuddy']} 个等 WorkBuddy 接力")
+    except Exception as exc:  # 恢复失败不能拖垮平台启动
+        summary["ok"] = False
+        summary["error"] = f"{type(exc).__name__}: {exc}"
+    return summary
+
+
+def pending_queue_info() -> dict:
+    """待办队列文件是否健康（界面用来判断"恢复"是否真的生效）。"""
+    info = {"workbuddy": {"path": str(PENDING_FILE), "exists": PENDING_FILE.exists(),
+                          "size": 0, "modified": None}}
+    for path in (PENDING_FILE,):
+        try:
+            stat = path.stat()
+            info["workbuddy"]["size"] = stat.st_size
+            info["workbuddy"]["modified"] = datetime.fromtimestamp(
+                stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except OSError:
+            pass
+    return info
 
 
 def refresh_model_confirm(state: dict) -> None:
@@ -2117,7 +2209,15 @@ def cmd_run(args):
 
 
 def cmd_watch(args):
-    print(f"👀 常驻轮询中，间隔 {args.interval}s，Ctrl+C 停止")
+    interval = args.interval
+    if not interval:
+        # 没在命令行指定就用平台里配置的轮询间隔（默认 45s）
+        try:
+            import workbuddy_config
+            interval = int(workbuddy_config.get("poll_seconds") or 45)
+        except Exception:
+            interval = 45
+    print(f"👀 常驻轮询中，间隔 {interval}s，Ctrl+C 停止")
     try:
         while True:
             try:
@@ -2128,7 +2228,7 @@ def cmd_watch(args):
                     print(f"  -> 变更 {n} 次")
             except RuntimeError as e:
                 print(f"  （跳过：{e}）")
-            time.sleep(args.interval)
+            time.sleep(interval)
     except KeyboardInterrupt:
         print("\n已停止")
 
@@ -2299,7 +2399,8 @@ def main():
     p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("watch", help="常驻轮询")
-    p.add_argument("--interval", type=int, default=30)
+    p.add_argument("--interval", type=int, default=None,
+                   help="轮询间隔（秒）；不填则读平台里配置的 poll_seconds")
     p.set_defaults(func=cmd_watch)
 
     p = sub.add_parser("serve", help="启动网页看板")
