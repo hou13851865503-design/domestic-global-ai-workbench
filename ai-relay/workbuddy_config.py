@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -94,8 +95,11 @@ class ConfigError(ValueError):
 @contextmanager
 def file_lock(path: Path = LOCK_FILE, timeout: float = 5.0):
     """跨进程互斥。抢不到锁就抛 ConfigError，而不是无限等。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(path, "a+b")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(path, "a+b")
+    except OSError as exc:
+        raise ConfigError(f"无法创建配置锁文件 {path.name}：{exc}") from exc
     locked = False
     deadline = time.time() + timeout
     try:
@@ -150,6 +154,10 @@ def _coerce_int(raw, low: int, high: int) -> tuple[int, str | None]:
     if isinstance(raw, bool):
         return low, "不能是布尔值"
     if isinstance(raw, float):
+        # JSON 里 1e400 是合法写法，解析出来是 inf；inf/NaN 直接 int() 会抛
+        # OverflowError / ValueError，把整个请求打成 500。必须先挡掉。
+        if not math.isfinite(raw):
+            return low, "必须是有限整数（收到无穷大或 NaN）"
         if raw != int(raw):
             return low, "必须是整数"
         raw = int(raw)
@@ -268,16 +276,35 @@ def ensure_file() -> tuple[dict, list[str]]:
     return cfg, warnings
 
 
+def _read_config_text(path: Path) -> tuple[str | None, str | None]:
+    """按字节读，再尝试解码。
+
+    只写 `read_text(encoding="utf-8")` 是不够的：Windows 记事本"另存为"默认是
+    ANSI(GBK)，新版也可能是 "UTF-8 带 BOM"。前者让 read_text 抛 UnicodeDecodeError
+    （这个异常既不是 OSError 也不是 JSONDecodeError，会直接冒到接口层变 500），
+    后者让 json.loads 报 "Unexpected UTF-8 BOM"。两种都得认。
+    """
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return None, f"配置文件读不出来：{exc}"
+    for encoding in ("utf-8-sig", "gbk"):
+        try:
+            return data.decode(encoding), None
+        except UnicodeDecodeError:
+            continue
+    return None, "配置文件不是 UTF-8 或 GBK 编码（可能是二进制或已损坏）"
+
+
 def load() -> tuple[dict, list[str]]:
     """读配置。永远返回一份可用的配置 + 告警列表（不抛异常、不写盘）。"""
     warnings: list[str] = []
     if not CONFIG_FILE.exists():
         return dict(DEFAULTS), warnings
 
-    try:
-        raw = CONFIG_FILE.read_text(encoding="utf-8")
-    except OSError as exc:
-        warnings.append(f"配置文件读不出来：{exc}；已回退默认值")
+    raw, read_error = _read_config_text(CONFIG_FILE)
+    if raw is None:
+        warnings.append(f"{read_error}；已回退默认值")
         return dict(DEFAULTS), warnings
 
     if not raw.strip():

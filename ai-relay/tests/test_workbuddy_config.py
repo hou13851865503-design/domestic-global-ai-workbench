@@ -168,7 +168,9 @@ class WorkbuddyConfigTests(_PluginTestBase):
     def test_read_permission_error_falls_back(self):
         self.file.parent.mkdir(parents=True, exist_ok=True)
         self.file.write_text("{}", encoding="utf-8")
-        with patch.object(Path, "read_text", side_effect=OSError("拒绝访问")):
+        # 注意：load() 现在走 read_bytes() 再自己解码（为了兼容 GBK/BOM），
+        # 所以要拦 read_bytes 而不是 read_text，否则补丁打空、测试假通过。
+        with patch.object(Path, "read_bytes", side_effect=OSError("拒绝访问")):
             cfg, warnings = wbc.load()
         self.assertEqual(cfg, dict(wbc.DEFAULTS))
         self.assertTrue(any("读不出来" in w for w in warnings))
@@ -211,6 +213,66 @@ class WorkbuddyConfigTests(_PluginTestBase):
         cfg, warnings = wbc.load()
         self.assertEqual(cfg["model"], "m")
         self.assertTrue(any("忽略未知字段" in w for w in warnings))
+
+    # ---------------- 编码（用户用记事本改过配置的两种典型情况）----------------
+    def test_gbk_encoded_file_is_read_not_crashing(self):
+        """记事本"另存为 ANSI"= GBK。原来 read_text(utf-8) 抛 UnicodeDecodeError，
+        既不是 OSError 也不是 JSONDecodeError，会一路冒到接口层变 500。
+        现在应当**正常读出**用户配置（而不是静默丢掉回退默认值）。"""
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        self.file.write_bytes('{"model": "深度求索"}'.encode("gbk"))
+        cfg, warnings = wbc.load()          # 不允许抛异常
+        self.assertEqual(cfg["model"], "深度求索", "GBK 文件里的配置应被正确读出")
+        self.assertEqual(warnings, [], "能读出来就不该报告警")
+
+    def test_utf8_bom_file_parses_normally(self):
+        """记事本"UTF-8 带 BOM"：BOM 必须被吞掉，而不是当成坏 JSON 丢掉用户配置。"""
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        body = json.dumps({"model": "bom-model"}, ensure_ascii=False)
+        self.file.write_bytes(b"\xef\xbb\xbf" + body.encode("utf-8"))
+        cfg, warnings = wbc.load()
+        self.assertEqual(cfg["model"], "bom-model")
+        self.assertEqual(warnings, [])
+
+    def test_binary_garbage_falls_back(self):
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        self.file.write_bytes(bytes(range(256)))
+        cfg, warnings = wbc.load()
+        self.assertEqual(cfg, dict(wbc.DEFAULTS))
+        self.assertTrue(any("编码" in w or "不是合法 JSON" in w for w in warnings))
+
+    # ---------------- 数值边界 ----------------
+    def test_infinite_and_nan_rejected_not_crashing(self):
+        """JSON 里 1e400 合法，解析成 inf；int(inf) 会抛 OverflowError 打成 500。"""
+        for raw in (float("inf"), float("-inf"), float("nan"), 1e400):
+            with self.assertRaises(wbc.ConfigError, msg=f"{raw!r} 应被拒绝"):
+                wbc.save({"poll_seconds": raw})
+        # 直接走校验函数也不能抛非 ConfigError 的异常
+        _, errors = wbc.validate({"handoff_timeout_minutes": float("inf")}, partial=True)
+        self.assertEqual(errors[0]["field"], "handoff_timeout_minutes")
+
+    # ---------------- 其它 ----------------
+    def test_log_creates_missing_logs_dir(self):
+        """新克隆的目录里 _logs 不存在：既不能抛异常，也要能自己把目录补上。
+
+        早先的实现直接 open(LOGS / "日期.log")，FileNotFoundError 会从
+        log() 里逃出去，把一个本该成功的 HTTP 请求打成 500。现在 log()
+        会先 mkdir(parents=True)，所以这里断言的是"不抛 + 目录被建出来"。
+        """
+        missing = self.root / "不存在的日志目录" / "更深的子目录"
+        with patch.object(orch, "LOGS", missing):
+            orch.log("测试")                # 不允许抛异常
+        self.assertTrue(missing.is_dir(), "log() 应自愈创建日志目录")
+        written = list(missing.glob("*.log"))
+        self.assertEqual(len(written), 1, "应写入当天的一个日志文件")
+
+    def test_log_never_raises_when_logs_dir_unwritable(self):
+        """日志目录没法创建（路径被同名文件占住）时，同样不能把业务打死。"""
+        blocked = self.root / "被文件占住的日志目录"
+        blocked.write_text("我是个文件，不是目录", encoding="utf-8")
+        with patch.object(orch, "LOGS", blocked / "子目录"):
+            orch.log("测试")                # 不允许抛异常，静默放弃写盘
+        self.assertTrue(blocked.is_file(), "不能把同名文件删掉换成目录")
 
 
 class WorkbuddyIntegrationTests(_PluginTestBase):

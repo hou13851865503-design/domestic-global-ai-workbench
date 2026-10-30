@@ -145,11 +145,21 @@ def load_config() -> dict:
     return cfg
 
 
+# 这些字段的真实来源是 _state/workbuddy.json，load_config 只是把它们并进来方便读取；
+# 写回 agents.json 时必须摘掉，否则同一个模型会有两份副本，改一边另一边是陈的。
+WORKBUDDY_INJECTED = ("model", "poll_seconds", "handoff_timeout_minutes")
+
+
 def save_config(cfg: dict) -> None:
     """原子写入（临时文件 + fsync + 替换 + .bak），避免写一半被读到。"""
     import workbuddy_config
+    payload = json.loads(json.dumps(cfg))  # 深拷贝，别改调用方传进来的对象
+    backend = payload.get("backends", {}).get("workbuddy")
+    if isinstance(backend, dict):
+        for key in WORKBUDDY_INJECTED:
+            backend.pop(key, None)
     workbuddy_config.write_json_atomic(
-        AGENTS_FILE, cfg, backup=AGENTS_FILE.with_name("agents.bak.json"))
+        AGENTS_FILE, payload, backup=AGENTS_FILE.with_name("agents.bak.json"))
 
 
 def backend_for_role(role: str, cfg: dict | None = None) -> dict | None:

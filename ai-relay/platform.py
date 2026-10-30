@@ -244,12 +244,19 @@ def workbuddy_save(payload: dict) -> tuple[int, dict]:
     抽成函数而不是写在 handler 里，是为了能直接被单测调用 —— 走 HTTP 测一遍
     既慢又要处理端口占用，覆盖不到"校验失败"这类分支。
     """
+    # 请求体不是对象时必须明确拒绝：原来会把 [] 当成 {} 处理，
+    # 于是什么都没改却回 200 ok，调用方以为保存成功了。
+    if not isinstance(payload, dict):
+        return 400, {"ok": False, "error": "请求体必须是 JSON 对象",
+                     "errors": [{"field": "-", "label": "请求体",
+                                 "error": f"收到 {type(payload).__name__}，应为对象"}]}
     try:
-        cfg = workbuddy_config.save(payload if isinstance(payload, dict) else {})
+        cfg = workbuddy_config.save(payload)
     except workbuddy_config.ConfigError as exc:
         orch.log(f"WorkBuddy 配置写入被拒绝：{exc.message}")
         return 400, exc.as_dict()
     except Exception as exc:  # 兜底：任何异常都不能让服务 500 掉线
+        orch.log(f"WorkBuddy 配置保存异常：{type(exc).__name__}: {exc}")
         return 500, {"ok": False, "error": f"保存失败：{type(exc).__name__}: {exc}"}
 
     orch.log(f"WorkBuddy 配置已更新：model={cfg.get('model') or '(未指定)'} "
@@ -271,12 +278,18 @@ def workbuddy_reset() -> tuple[int, dict]:
         cfg = workbuddy_config.reset()
     except workbuddy_config.ConfigError as exc:
         return 400, exc.as_dict()
+    except Exception as exc:
+        return 500, {"ok": False, "error": f"恢复默认失败：{type(exc).__name__}: {exc}"}
     orch.log("WorkBuddy 配置已恢复默认")
     return 200, {"ok": True, "config": cfg}
 
 
 def workbuddy_resume() -> tuple[int, dict]:
-    summary = orch.restore_unfinished()
+    try:
+        summary = orch.restore_unfinished()
+    except Exception as exc:  # restore_unfinished 内部已兜底，这里再保一层
+        summary = {"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                   "total": 0, "unfinished": 0, "waiting_workbuddy": 0}
     _LAST_RESUME.clear()
     _LAST_RESUME.update(summary)
     payload = {"ok": bool(summary.get("ok")), "resume": summary}
@@ -297,17 +310,25 @@ def workbuddy_view() -> dict:
     读失败不抛异常：load() 已经做过降级，这里把告警原样带回界面，
     让用户看到"用的是默认值"而不是以为自己设的模型生效了。
     """
-    cfg, warnings = workbuddy_config.ensure_file()
+    try:
+        cfg, warnings = workbuddy_config.ensure_file()
+    except Exception as exc:  # 目录只读、编码异常等：面板必须还能打开
+        cfg, warnings = dict(workbuddy_config.DEFAULTS), [
+            f"读取配置失败（{type(exc).__name__}: {exc}）；当前显示默认值"]
     try:
         queue = orch.pending_queue_info()
     except Exception as exc:
         queue = {"error": f"{type(exc).__name__}: {exc}"}
+    try:
+        file_info = workbuddy_config.status()
+    except Exception as exc:
+        file_info = {"error": f"{type(exc).__name__}: {exc}"}
     return {
         "ok": True,
         "config": cfg,
         "fields": workbuddy_config.describe(),
         "defaults": dict(workbuddy_config.DEFAULTS),
-        "file": workbuddy_config.status(),
+        "file": file_info,
         "warnings": warnings,
         "queue": queue,
         "last_resume": _LAST_RESUME,
@@ -1084,41 +1105,56 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
 
+def _resume_after_start() -> None:
+    """启动后恢复现场：重扫未完成任务、重建 WorkBuddy 待办队列。
+
+    放在后台线程里跑：`restore_unfinished()` 要抢编排器的文件锁，若另一个
+    watch 进程正在跑，最长会等 10 秒 —— 那段时间端口还没监听，用户看到的是
+    "双击没反应"。让它后台跑，端口可以立刻可用。
+    """
+    try:
+        if not workbuddy_config.get("auto_resume"):
+            print("  启动恢复已关闭（可在「WorkBuddy 配置」里打开）", flush=True)
+            return
+        summary = orch.restore_unfinished()
+        _LAST_RESUME.clear()
+        _LAST_RESUME.update(summary)
+        # 这里的 print 必须 flush：启动器把 stdout 重定向到日志文件时是管道，
+        # Python 默认块缓冲，进程退出时缓冲区里的内容会整块丢掉 —— 结果就是
+        # "明明恢复了任务，日志里却一个字都没有"，最需要排查时反而没线索。
+        if summary.get("ok"):
+            print(f"  恢复：共 {summary.get('total', 0)} 个任务，"
+                  f"{summary.get('unfinished', 0)} 个未完成，"
+                  f"其中 {summary.get('waiting_workbuddy', 0)} 个等 WorkBuddy 接力",
+                  flush=True)
+        else:
+            print(f"  恢复失败（不影响服务）：{summary.get('error')}", flush=True)
+    except Exception as exc:  # 恢复失败绝不影响服务可用
+        print(f"  恢复失败（不影响服务）：{exc}", flush=True)
+
+
 def main():
     import argparse
     ap = argparse.ArgumentParser(description="ai-relay 平台")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = ap.parse_args()
 
+    # 新克隆的目录里 _state/_logs 等都不存在，先建齐再对外服务
+    orch.ensure_workspace_dirs()
+
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"ai-relay 平台已启动： http://127.0.0.1:{args.port}/")
-
-    # 启动即恢复现场：state.json 只是记录，_PENDING_FOR_WORKBUDDY.md 才是
-    # WorkBuddy 会话真正读的东西 —— 队列文件丢了任务就"看着还在、实际没人做"。
-    try:
-        if workbuddy_config.get("auto_resume"):
-            summary = orch.restore_unfinished()
-            _LAST_RESUME.clear()
-            _LAST_RESUME.update(summary)
-            if summary.get("ok"):
-                print(f"  恢复：共 {summary['total']} 个任务，"
-                      f"{summary['unfinished']} 个未完成，"
-                      f"其中 {summary['waiting_workbuddy']} 个等 WorkBuddy 接力")
-            else:
-                print(f"  恢复失败（不影响服务）：{summary.get('error')}")
-        else:
-            print("  启动恢复已关闭（可在「WorkBuddy 配置」里打开）")
-    except Exception as exc:
-        print(f"  恢复失败（不影响服务）：{exc}")
-
-    print(f"  Codex: {orch.CODEX_BIN or '未找到'}")
-    print(f"  base_url: {orch.get_codex_base_url() or '(未配置)'}")
-    print(f"  代理(8787): {'运行中' if port_open(PROXY_PORT) else '未运行 —— Codex 可能连不上'}")
-    print("Ctrl+C 停止")
+    # 统一 flush：启动器把 stdout 接进日志文件时是管道（块缓冲），不 flush 的
+    # 启动信息会在进程被 Ctrl+C / 关闭窗口时整块丢失，日志里只剩半截。
+    print(f"ai-relay 平台已启动： http://127.0.0.1:{args.port}/", flush=True)
+    threading.Thread(target=_resume_after_start, daemon=True).start()
+    print(f"  Codex: {orch.CODEX_BIN or '未找到'}", flush=True)
+    print(f"  base_url: {orch.get_codex_base_url() or '(未配置)'}", flush=True)
+    print(f"  代理(8787): {'运行中' if port_open(PROXY_PORT) else '未运行 —— Codex 可能连不上'}", flush=True)
+    print("Ctrl+C 停止", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\n已停止")
+        print("\n已停止", flush=True)
 
 
 if __name__ == "__main__":

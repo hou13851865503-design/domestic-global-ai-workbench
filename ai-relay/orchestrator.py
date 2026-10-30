@@ -335,10 +335,32 @@ def reset_prompt_optimization(task: dict) -> None:
 
 
 def log(msg: str, task_id: str = "") -> None:
+    """写一行日志。
+
+    日志写不进去不能把业务打死：`python platform.py` 直接启动时（README 里写的
+    用法之一）工作目录可能是新克隆的，`_logs/` 还不存在 —— 原来这里直接 open
+    会抛 FileNotFoundError，把正在返回的成功响应打成 500。
+    """
     line = f"[{now()}] {'[' + task_id + '] ' if task_id else ''}{msg}"
-    print(line, flush=True)
-    with open(LOGS / f"{datetime.now():%Y-%m-%d}.log", "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
+    try:
+        LOGS.mkdir(parents=True, exist_ok=True)
+        with open(LOGS / f"{datetime.now():%Y-%m-%d}.log", "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
+def ensure_workspace_dirs() -> None:
+    """建齐运行时目录。platform.py / orchestrator.py 启动时都调一次。"""
+    for directory in (INBOX, PROMPTS, OUTPUT, REVIEW, STATE, LOGS):
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
 
 def new_id(state: dict) -> str:
@@ -2360,8 +2382,7 @@ def serve(port: int = 8765):
 # --------------------------------------------------------------------------
 
 def main():
-    for d in (INBOX, PROMPTS, OUTPUT, REVIEW, STATE, LOGS):
-        d.mkdir(parents=True, exist_ok=True)
+    ensure_workspace_dirs()
 
     ap = argparse.ArgumentParser(description="ai-relay 流水线编排器")
     sub = ap.add_subparsers(dest="cmd", required=True)
