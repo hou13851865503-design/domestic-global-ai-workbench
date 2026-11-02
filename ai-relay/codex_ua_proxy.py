@@ -75,12 +75,36 @@ UA = (
 # 这些头由转发层重新决定，不能原样带给上游
 DROP_HEADERS = {"host", "content-length", "connection", "accept-encoding"}
 
+# 允许浏览器里的页面直接调用本代理。
+#
+# 为什么需要：网页发请求带 Authorization 头时，浏览器会先发一个 OPTIONS 预检，
+# 而 BaseHTTPRequestHandler 默认没有实现 do_OPTIONS，直接回 501 —— 于是任何
+# 本地 HTML 工具都调不通这里，只会看到一句含义模糊的 "Failed to fetch"。
+# 只加了跨域响应头，鉴权仍然由上游负责，本代理照旧不读不写凭据。
+CORS_HEADERS = (
+    ("Access-Control-Allow-Origin", "*"),
+    ("Access-Control-Allow-Headers", "*"),
+    ("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"),
+    ("Access-Control-Max-Age", "86400"),
+)
+
 
 class ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):  # 只记录一行摘要，避免刷屏
         print(f"[{self.log_date_time_string()}] {self.command} {self.path} -> {args[1] if len(args) > 1 else ''}")
+
+    def _cors(self):
+        for name, value in CORS_HEADERS:
+            self.send_header(name, value)
+
+    def do_OPTIONS(self):
+        """回答浏览器的跨域预检，不转发给上游。"""
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _forward(self):
         global OPENER
@@ -118,6 +142,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 code = r.status
                 response_headers = r.headers
             self.send_response(code)
+            self._cors()
             for k in ("Content-Type", "Cache-Control"):
                 if response_headers and response_headers.get(k):
                     self.send_header(k, response_headers.get(k))
@@ -127,12 +152,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             data = e.read()
             self.send_response(e.code)
+            self._cors()
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
         except Exception as e:
             msg = f"proxy error: {e}".encode("utf-8")
             self.send_response(502)
+            self._cors()
             self.send_header("Content-Length", str(len(msg)))
             self.end_headers()
             self.wfile.write(msg)

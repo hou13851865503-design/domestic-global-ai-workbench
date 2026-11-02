@@ -104,6 +104,7 @@ demand; the panel shows the last result and the queue file's timestamp.
 - WorkBuddy settings (model, polling interval, handoff timeout, auto-resume) are stored separately in `ai-relay/_state/workbuddy.json` — see the section above.
 - Input files, generated prompts, outputs, and reviews are kept in the local `ai-relay` workspace and are excluded from Git.
 - The dashboard listens on loopback (`127.0.0.1`) and has no authentication layer. Do not change the bind address or expose the port to a network without adding appropriate access controls.
+- `ai-relay/codex_ua_proxy.py` is an OpenAI-compatible local relay that forwards to the upstream provider with a browser User-Agent. It answers `OPTIONS` preflight with `204` and returns `Access-Control-Allow-Origin: *`, so browser pages (such as a local resume tool) can call it directly. Authentication is still decided by the upstream — the relay reads and stores no credentials. Because the origin is wildcarded, keep the relay bound to loopback.
 - The Codex CLI integration can run with elevated workspace permissions. Use a dedicated workspace, review generated code, and do not place sensitive material in the app workspace.
 - The monitor records call metadata and concise public-facing events. It intentionally does not display private chain-of-thought.
 - External AI providers receive prompts and files according to their own service terms. Configure only providers you trust with the data you submit.
@@ -128,6 +129,9 @@ The suite covers activity tracking, interrupted calls, handoff states, prompt im
 | `ai-relay/orchestrator.py` | Task state machine and agent workflow |
 | `ai-relay/agents.py` | Backend configuration and adapters |
 | `ai-relay/workbuddy_config.py` | WorkBuddy settings: validation, atomic persistence, recovery |
+| `ai-relay/codex_ua_proxy.py` | Local OpenAI-compatible relay with CORS support for browser tools |
+| `ai-relay/dashboard.html`, `platform.html` | Dashboard and workbench front ends |
+| `ai-relay/2048.html`, `game.html` | Small self-contained pages served from the same local workspace |
 | `ai-relay/01_分工与协议/` | Agent role boundaries and collaboration protocol |
 | `ai-relay/tests/` | Automated regression tests |
 
